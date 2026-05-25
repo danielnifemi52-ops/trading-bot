@@ -1,7 +1,7 @@
 export default function StatCard({ label, value, sub, highlight }) {
   return (
     <div style={{
-      border: 1px solid ,
+      border: '1px solid #2d313f',
       borderRadius: '8px',
       padding: '16px',
       textAlign: 'center',

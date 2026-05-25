@@ -6,10 +6,24 @@ These do not hit Alpaca or Telegram — broker is always dry_run.
 from fastapi.testclient import TestClient
 from main import app
 from db import init_db
+import pytest
+import pandas as pd
+from unittest.mock import patch
 
 init_db()
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def mock_yf_download():
+    """Autouse fixture to mock yfinance.download with dummy data to keep tests fast and offline."""
+    dates = pd.date_range(start="2022-01-01", periods=50)
+    prices = [100.0 + i for i in range(50)]
+    mock_df = pd.DataFrame({"Close": prices}, index=dates)
+    with patch("services.backtester.yf.download", return_value=mock_df) as mock:
+        yield mock
+
 
 
 def test_health():

@@ -20,7 +20,7 @@ export default function SignalBadge({ signal }) {
       letterSpacing: '0.06em',
       background: c.bg,
       color: c.text,
-      border: 1px solid ,
+      border: `1px solid ${c.border}`,
     }}>
       {signal || 'HOLD'}
     </span>
