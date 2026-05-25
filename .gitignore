@@ -22,6 +22,15 @@ venv/
 *.log
 bot.log
 
+# Testing / coverage
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+.pytype/
+
 # Node
 node_modules/
 frontend/dist/
@@ -35,3 +44,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+.AGENTS.md
+.Makefile
