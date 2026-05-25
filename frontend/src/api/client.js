@@ -1,4 +1,4 @@
-﻿/**
+/**
  * client.js
  * Central Axios instance. All API calls go through this file.
  * Swap the baseURL here when deploying - nothing else changes.
@@ -7,7 +7,7 @@ import axios from 'axios'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '',
-  timeout: 30000,
+  timeout: 120000,
 })
 
 // Attach X-API-Key header if configured

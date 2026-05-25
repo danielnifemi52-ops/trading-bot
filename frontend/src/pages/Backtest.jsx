@@ -156,6 +156,11 @@ export default function Backtest() {
                 <option value="1d">Daily (1d)</option>
                 <option value="1h">Hourly (1h)</option>
               </select>
+              {interval === '1h' && (
+                <p style={{ fontSize: 11, color: '#f59e0b', marginTop: 4 }}>
+                  ⚠ Hourly interval downloads more data and takes ~60s longer
+                </p>
+              )}
             </div>
             <div>
               <label style={labelStyle}>RSI Period</label>
@@ -235,8 +240,13 @@ export default function Backtest() {
               boxShadow: '0 4px 12px rgba(59, 130, 246, 0.2)',
             }}
           >
-            {loading ? 'Running Backtest...' : 'Run Simulation'}
+            {loading ? 'Running simulation...' : 'Run Simulation'}
           </button>
+          {loading && (
+            <p style={{ fontSize: 12, color: '#64748b', marginTop: 8, textAlign: 'center' }}>
+              Hourly backtests can take 60-90 seconds. Please wait...
+            </p>
+          )}
         </form>
 
         {error && (
