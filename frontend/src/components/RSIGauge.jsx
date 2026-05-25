@@ -6,7 +6,7 @@ import React from 'react';
 
 const RSIGauge = ({ value }) => {
   // Handle null/undefined values gracefully
-  if (value === null || value === undefined) {
+  if (value === null || value === undefined || isNaN(value)) {
     return (
       <div className="rsi-gauge">
         <div className="gauge-container">

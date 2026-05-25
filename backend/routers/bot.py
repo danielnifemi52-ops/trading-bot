@@ -61,8 +61,9 @@ async def start_bot(req: BotConfigRequest, session: Session = Depends(get_sessio
 
     def on_tick(price: float, rsi: float, signal: str, account: float):
         """Persist a BotLog row and broadcast to WebSocket clients."""
+        from db import engine
         try:
-            with Session(session.get_bind()) as s:
+            with Session(engine) as s:
                 row = BotLog(
                     symbol=req.symbol, price=price, rsi=rsi,
                     signal=signal, account_value=account,
@@ -73,12 +74,16 @@ async def start_bot(req: BotConfigRequest, session: Session = Depends(get_sessio
         except Exception as e:
             log.error(f"on_tick DB write failed: {e}")
 
+        data = {
+            "price":   price,
+            "rsi":     rsi,
+            "signal":  signal,
+            "account": account,
+            "symbol":  cfg.symbol,
+            "ts":      datetime.utcnow().isoformat(),
+        }
         try:
-            asyncio.run_coroutine_threadsafe(
-                manager.broadcast({"price": price, "rsi": rsi,
-                                   "signal": signal, "account": account}),
-                loop,
-            )
+            asyncio.run_coroutine_threadsafe(manager.broadcast(data), loop)
         except Exception as e:
             log.error(f"WebSocket broadcast failed: {e}")
 

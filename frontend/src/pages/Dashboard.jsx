@@ -53,10 +53,10 @@ export default function Dashboard() {
   }, [liveData])
 
   // Get current active values (prefer WebSocket live data, fall back to last status value)
-  const currentPrice = liveData?.price ?? status?.last_price
-  const currentRsi = liveData?.rsi ?? status?.last_rsi
-  const currentSignal = liveData?.signal ?? status?.last_signal ?? 'HOLD'
-  const accountValue = liveData?.account ?? status?.account_value ?? 10000.0
+  const price   = liveData?.price   ?? status?.last_price   ?? null
+  const rsi     = liveData?.rsi     ?? status?.last_rsi     ?? null
+  const signal  = liveData?.signal  ?? status?.last_signal  ?? 'HOLD'
+  const account = liveData?.account ?? status?.account_value ?? null
 
   const formatPrice = (val) => {
     if (val === undefined || val === null) return '--'
@@ -99,24 +99,24 @@ export default function Dashboard() {
       }}>
         <StatCard
           label="Current Price"
-          value={currentPrice ? formatPrice(currentPrice) : '--'}
+          value={price !== null ? formatPrice(price) : '--'}
           sub={status?.symbol ? `Symbol: ${status.symbol}` : 'Bot Idle'}
-          highlight={currentPrice ? 'var(--blue)' : undefined}
+          highlight={price !== null ? 'var(--blue)' : undefined}
         />
         <StatCard
           label="RSI Value (14h)"
-          value={currentRsi ? formatRsi(currentRsi) : '--'}
+          value={rsi !== null ? formatRsi(rsi) : '--'}
           sub="Wilder's Smoothed RSI"
-          highlight={currentRsi ? (currentRsi <= status?.config?.oversold ? 'var(--green)' : currentRsi >= status?.config?.overbought ? 'var(--red)' : 'var(--text)') : undefined}
+          highlight={rsi !== null ? (rsi <= status?.config?.oversold ? 'var(--green)' : rsi >= status?.config?.overbought ? 'var(--red)' : 'var(--text)') : undefined}
         />
         <StatCard
           label="Current Signal"
-          value={<SignalBadge signal={currentSignal} />}
+          value={<SignalBadge signal={signal} />}
           sub={status?.running ? 'Live Signal Polling' : 'Bot Offline'}
         />
         <StatCard
           label="Simulated Account Value"
-          value={formatPrice(accountValue)}
+          value={account !== null ? formatPrice(account) : '--'}
           sub="Risk per trade capital base"
           highlight="var(--green)"
         />
@@ -149,7 +149,7 @@ export default function Dashboard() {
             RSI Technical Gauge
           </h3>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <RSIGauge value={currentRsi} />
+            <RSIGauge value={rsi} />
           </div>
         </div>
 
