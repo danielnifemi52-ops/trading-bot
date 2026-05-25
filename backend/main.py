@@ -84,5 +84,19 @@ async def websocket_live(ws: WebSocket):
 
 @app.get("/health")
 async def health():
-    """Health check endpoint."""
-    return {"status": "ok"}
+    """Health check endpoint that verifies database connection and overall system health."""
+    health_status = {"status": "ok", "db": "unknown"}
+    try:
+        from sqlmodel import Session, text
+        from db import engine
+        with Session(engine) as session:
+            session.execute(text("SELECT 1"))
+        health_status["db"] = "ok"
+    except Exception as e:
+        health_status["status"] = "error"
+        health_status["db"] = f"error: {str(e)}"
+    
+    if health_status["status"] == "ok":
+        return health_status
+    else:
+        return JSONResponse(status_code=503, content=health_status)

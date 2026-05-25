@@ -2,10 +2,11 @@
  * Optimizer.jsx
  * Performs async parameter sweep optimization to discover the best RSI thresholds.
  */
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useOptimizer } from '../hooks/useOptimizer'
-import StatCard from '../components/StatCard'
+
+import TickerSelect from '../components/TickerSelect'
 
 export default function Optimizer() {
   const { job, loading, error, start } = useOptimizer()
@@ -16,6 +17,9 @@ export default function Optimizer() {
   const [startCapital, setStartCapital] = useState(10000)
   const [startDate, setStartDate] = useState('2019-01-01')
   const [endDate, setEndDate] = useState('2023-01-01')
+  const optimizerResults = job?.status === 'complete' && Array.isArray(job.results)
+    ? job.results
+    : []
 
   const handleSubmit = (e) => {
     e.preventDefault()
@@ -42,12 +46,25 @@ export default function Optimizer() {
     navigate('/')
   }
 
-  const formatPrice = (val) => {
-    if (val === undefined || val === null) return '--'
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(val)
+  const metricValue = (row, ...keys) => {
+    for (const key of keys) {
+      const value = Number(row?.[key])
+      if (Number.isFinite(value)) return value
+    }
+    return 0
+  }
+
+  const returnPct = (row) => {
+    const explicitReturn = Number(row?.total_return)
+    if (Number.isFinite(explicitReturn)) return explicitReturn
+
+    const totalPnl = Number(row?.total_pnl)
+    const capital = Number(startCapital)
+    if (Number.isFinite(totalPnl) && Number.isFinite(capital) && capital > 0) {
+      return (totalPnl / capital) * 100
+    }
+
+    return 0
   }
 
   const inputStyle = {
@@ -92,12 +109,9 @@ export default function Optimizer() {
         }}>
           <div>
             <label style={labelStyle}>Ticker Symbol</label>
-            <input
-              type="text"
+            <TickerSelect
               value={symbol}
-              onChange={(e) => setSymbol(e.target.value)}
-              style={inputStyle}
-              required
+              onChange={setSymbol}
             />
           </div>
           <div>
@@ -207,7 +221,7 @@ export default function Optimizer() {
       )}
 
       {/* Results Table Card */}
-      {job && job.status === 'complete' && job.results && (
+      {job && job.status === 'complete' && (
         <div style={{
           background: 'var(--surface)',
           border: '1px solid var(--border)',
@@ -223,79 +237,98 @@ export default function Optimizer() {
             </p>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{
-              width: '100%',
-              borderCollapse: 'collapse',
-              textAlign: 'left',
+          {optimizerResults.length > 0 ? (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                textAlign: 'left',
+              }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                    <th style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '12px', fontWeight: '600' }}>Period</th>
+                    <th style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '12px', fontWeight: '600' }}>Oversold</th>
+                    <th style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '12px', fontWeight: '600' }}>Overbought</th>
+                    <th style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '12px', fontWeight: '600' }}>Stop Loss %</th>
+                    <th style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '12px', fontWeight: '600' }}>Take Profit %</th>
+                    <th style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '12px', fontWeight: '600' }}>Trades</th>
+                    <th style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '12px', fontWeight: '600' }}>Win Rate</th>
+                    <th style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '12px', fontWeight: '600' }}>Total Return</th>
+                    <th style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '12px', fontWeight: '600' }}>Sharpe</th>
+                    <th style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '12px', fontWeight: '600' }}>Score</th>
+                    <th style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '12px', fontWeight: '600', textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {optimizerResults.map((r, idx) => {
+                    const isTopRow = idx === 0
+                    const trades = metricValue(r, 'trades', 'total_trades')
+                    const winRate = metricValue(r, 'win_rate')
+                    const totalReturn = returnPct(r)
+                    const sharpe = metricValue(r, 'sharpe', 'sharpe_ratio')
+                    const score = metricValue(r, 'score')
+
+                    return (
+                      <tr
+                        key={`${r.rsi_period}-${r.oversold}-${r.overbought}-${r.stop_loss_pct}-${r.take_profit_pct}`}
+                        style={{
+                          borderBottom: '1px solid var(--border)',
+                          background: isTopRow
+                            ? 'rgba(16, 185, 129, 0.05)'
+                            : idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
+                        }}
+                      >
+                        <td style={{ padding: '14px 14px', fontWeight: isTopRow ? '600' : 'normal' }}>{r.rsi_period}</td>
+                        <td style={{ padding: '14px 14px' }}>{r.oversold}</td>
+                        <td style={{ padding: '14px 14px' }}>{r.overbought}</td>
+                        <td style={{ padding: '14px 14px' }}>{r.stop_loss_pct}%</td>
+                        <td style={{ padding: '14px 14px' }}>{r.take_profit_pct}%</td>
+                        <td style={{ padding: '14px 14px' }}>{trades}</td>
+                        <td style={{ padding: '14px 14px' }}>{(winRate * 100).toFixed(1)}%</td>
+                        <td style={{
+                          padding: '14px 14px',
+                          color: totalReturn >= 0 ? 'var(--green)' : 'var(--red)',
+                          fontWeight: '600',
+                        }}>
+                          {totalReturn >= 0 ? '+' : ''}{totalReturn.toFixed(2)}%
+                        </td>
+                        <td style={{ padding: '14px 14px' }}>{sharpe.toFixed(2)}</td>
+                        <td style={{ padding: '14px 14px', color: 'var(--blue)', fontWeight: '600' }}>{score.toFixed(2)}</td>
+                        <td style={{ padding: '14px 14px', textAlign: 'right' }}>
+                          <button
+                            onClick={() => handleUseConfig(r)}
+                            style={{
+                              padding: '6px 12px',
+                              background: isTopRow ? 'var(--green)' : 'transparent',
+                              color: isTopRow ? 'white' : 'var(--muted)',
+                              border: isTopRow ? 'none' : '1px solid var(--border)',
+                              borderRadius: 'var(--radius)',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Use Config
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={{
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              padding: '24px',
+              color: 'var(--muted)',
+              fontSize: '13px',
+              textAlign: 'center',
             }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  <th style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '12px', fontWeight: '600' }}>Period</th>
-                  <th style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '12px', fontWeight: '600' }}>Oversold</th>
-                  <th style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '12px', fontWeight: '600' }}>Overbought</th>
-                  <th style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '12px', fontWeight: '600' }}>Stop Loss %</th>
-                  <th style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '12px', fontWeight: '600' }}>Take Profit %</th>
-                  <th style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '12px', fontWeight: '600' }}>Trades</th>
-                  <th style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '12px', fontWeight: '600' }}>Win Rate</th>
-                  <th style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '12px', fontWeight: '600' }}>Total Return</th>
-                  <th style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '12px', fontWeight: '600' }}>Sharpe</th>
-                  <th style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '12px', fontWeight: '600' }}>Score</th>
-                  <th style={{ padding: '12px 14px', color: 'var(--muted)', fontSize: '12px', fontWeight: '600', textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {job.results.map((r, idx) => {
-                  const isTopRow = idx === 0
-                  return (
-                    <tr
-                      key={idx}
-                      style={{
-                        borderBottom: '1px solid var(--border)',
-                        background: isTopRow
-                          ? 'rgba(16, 185, 129, 0.05)'
-                          : idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
-                      }}
-                    >
-                      <td style={{ padding: '14px 14px', fontWeight: isTopRow ? '600' : 'normal' }}>{r.rsi_period}</td>
-                      <td style={{ padding: '14px 14px' }}>{r.oversold}</td>
-                      <td style={{ padding: '14px 14px' }}>{r.overbought}</td>
-                      <td style={{ padding: '14px 14px' }}>{r.stop_loss_pct}%</td>
-                      <td style={{ padding: '14px 14px' }}>{r.take_profit_pct}%</td>
-                      <td style={{ padding: '14px 14px' }}>{r.trades}</td>
-                      <td style={{ padding: '14px 14px' }}>{(r.win_rate * 100).toFixed(1)}%</td>
-                      <td style={{
-                        padding: '14px 14px',
-                        color: r.total_return >= 0 ? 'var(--green)' : 'var(--red)',
-                        fontWeight: '600',
-                      }}>
-                        {r.total_return >= 0 ? '+' : ''}{r.total_return.toFixed(2)}%
-                      </td>
-                      <td style={{ padding: '14px 14px' }}>{r.sharpe.toFixed(2)}</td>
-                      <td style={{ padding: '14px 14px', color: 'var(--blue)', fontWeight: '600' }}>{r.score.toFixed(2)}</td>
-                      <td style={{ padding: '14px 14px', textAlign: 'right' }}>
-                        <button
-                          onClick={() => handleUseConfig(r)}
-                          style={{
-                            padding: '6px 12px',
-                            background: isTopRow ? 'var(--green)' : 'transparent',
-                            color: isTopRow ? 'white' : 'var(--muted)',
-                            border: isTopRow ? 'none' : '1px solid var(--border)',
-                            borderRadius: 'var(--radius)',
-                            fontSize: '12px',
-                            fontWeight: '600',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          Use Config
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+              Optimization finished, but no valid parameter combinations returned results.
+            </div>
+          )}
         </div>
       )}
 

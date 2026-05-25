@@ -8,6 +8,7 @@ from main import app
 from db import init_db
 import pytest
 import pandas as pd
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 init_db()
@@ -16,13 +17,14 @@ client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def mock_yf_download():
-    """Autouse fixture to mock yfinance.download with dummy data to keep tests fast and offline."""
+def mock_market_data_downloads():
+    """Mock market data downloads so route tests stay fast and offline."""
     dates = pd.date_range(start="2022-01-01", periods=50)
     prices = [100.0 + i for i in range(50)]
     mock_df = pd.DataFrame({"Close": prices}, index=dates)
-    with patch("services.backtester.yf.download", return_value=mock_df) as mock:
-        yield mock
+    with patch("services.backtester.yf.download", return_value=mock_df) as mock_yf, \
+         patch("services.backtester.download_alpaca", return_value=mock_df) as mock_alpaca:
+        yield {"yf": mock_yf, "alpaca": mock_alpaca}
 
 
 
@@ -112,6 +114,69 @@ def test_backtest_run():
     data = r.json()
     assert "stats" in data
     assert "equity_curve" in data
+    assert len(data["equity_curve"]) > 0
+
+
+def test_backtest_hourly_recent_run():
+    """Recent hourly backtests must work when yfinance returns data."""
+    payload = {
+        "symbol": "AAPL",
+        "start": (datetime.now() - timedelta(days=30)).date().isoformat(),
+        "end": datetime.now().date().isoformat(),
+        "interval": "1h",
+        "rsi_period": 14,
+        "oversold": 30,
+        "overbought": 70,
+        "stop_loss_pct": 5,
+        "take_profit_pct": 10,
+        "start_capital": 10000,
+    }
+    r = client.post("/api/backtest/run", json=payload)
+    assert r.status_code == 200
+    data = r.json()
+    assert "stats" in data
+    assert len(data["equity_curve"]) > 0
+
+
+def test_backtest_hourly_old_range_uses_alpaca_successfully():
+    """Old hourly ranges should work through Alpaca instead of yfinance."""
+    payload = {
+        "symbol": "AAPL",
+        "start": "2022-01-01",
+        "end": "2022-02-01",
+        "interval": "1h",
+        "rsi_period": 14,
+        "oversold": 30,
+        "overbought": 70,
+        "stop_loss_pct": 5,
+        "take_profit_pct": 10,
+        "start_capital": 10000,
+    }
+    r = client.post("/api/backtest/run", json=payload)
+    assert r.status_code == 200
+    data = r.json()
+    assert "stats" in data
+    assert len(data["equity_curve"]) > 0
+
+
+def test_backtest_15m_run():
+    """15-minute backtests should route through Alpaca."""
+    payload = {
+        "symbol": "AAPL",
+        "start": "2022-01-01",
+        "end": "2022-02-01",
+        "interval": "15m",
+        "rsi_period": 14,
+        "oversold": 30,
+        "overbought": 70,
+        "stop_loss_pct": 5,
+        "take_profit_pct": 10,
+        "start_capital": 10000,
+    }
+    r = client.post("/api/backtest/run", json=payload)
+    assert r.status_code == 200
+    data = r.json()
+    assert "stats" in data
     assert len(data["equity_curve"]) > 0
 
 

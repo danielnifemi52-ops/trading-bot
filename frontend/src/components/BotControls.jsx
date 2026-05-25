@@ -4,6 +4,9 @@
  */
 import React, { useState, useEffect } from 'react'
 
+import TickerSelect from './TickerSelect'
+import RSIPeriodSelect from './RSIPeriodSelect'
+
 export default function BotControls({ status, onStart, onStop, loading }) {
   const [symbol, setSymbol] = useState('AAPL')
   const [rsiPeriod, setRsiPeriod] = useState(14)
@@ -158,23 +161,16 @@ export default function BotControls({ status, onStart, onStop, loading }) {
           <div style={rowStyle}>
             <div>
               <label style={labelStyle}>Ticker Symbol</label>
-              <input
-                type="text"
+              <TickerSelect
                 value={symbol}
-                onChange={(e) => setSymbol(e.target.value)}
-                style={inputStyle}
-                required
+                onChange={setSymbol}
               />
             </div>
             <div>
               <label style={labelStyle}>RSI Period</label>
-              <input
-                type="number"
+              <RSIPeriodSelect
                 value={rsiPeriod}
-                onChange={(e) => setRsiPeriod(e.target.value)}
-                style={inputStyle}
-                required
-                min="2"
+                onChange={setRsiPeriod}
               />
             </div>
           </div>

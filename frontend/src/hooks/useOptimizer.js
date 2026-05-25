@@ -1,13 +1,21 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { startOptimizer as apiStartOptimizer, getOptimizerJob } from '../api/client'
 
 export function useOptimizer() {
   const [job, setJob] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [pollInterval, setPollInterval] = useState(null)
+  const pollIntervalRef = useRef(null)
+
+  const clearPolling = useCallback(() => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current)
+      pollIntervalRef.current = null
+    }
+  }, [])
 
   const start = useCallback(async (params) => {
+    clearPolling()
     setLoading(true)
     setError(null)
     setJob(null)
@@ -24,30 +32,26 @@ export function useOptimizer() {
           setJob(jobData)
           
           if (jobData.status === 'complete' || jobData.status === 'error') {
-            clearInterval(interval)
+            clearPolling()
             setLoading(false)
           }
         } catch (e) {
-          clearInterval(interval)
+          clearPolling()
           setError(e.response?.data?.detail || e.message || 'Failed to poll optimizer')
           setLoading(false)
         }
       }, 2000)
-      
+      pollIntervalRef.current = interval
     } catch (e) {
       setError(e.response?.data?.detail || e.message || 'Failed to start optimizer')
       setLoading(false)
     }
-  }, [])
+  }, [clearPolling])
 
   // Cleanup interval on unmount
   useEffect(() => {
-    return () => {
-      if (pollInterval) {
-        clearInterval(pollInterval)
-      }
-    }
-  }, [pollInterval])
+    return clearPolling
+  }, [clearPolling])
 
   return { job, loading, error, start }
 }

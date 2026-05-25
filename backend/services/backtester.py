@@ -2,14 +2,18 @@
 backtester.py
 Walk-forward backtester. Downloads historical OHLCV data via yfinance,
 simulates the RSI strategy trade by trade, and returns a BacktestResponse.
-No network calls other than yfinance. No database access.
+Uses Alpaca for intraday bars and yfinance for daily or longer bars.
+No database access.
 """
 from __future__ import annotations
 import logging
+import os
 import time
 import math
-from datetime import datetime
 
+from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.requests import StockBarsRequest
+from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 import numpy as np
 import pandas as pd
 import yfinance as yf
@@ -19,17 +23,73 @@ from models import BacktestRequest, BacktestResponse, TradeStats
 
 log = logging.getLogger(__name__)
 
+INTRADAY_INTERVALS = {"1h", "15m", "5m"}
+YFINANCE_INTERVALS = {"1d", "1wk"}
+SUPPORTED_INTERVALS = INTRADAY_INTERVALS | YFINANCE_INTERVALS
 
-def _download_with_retry(symbol: str, start: str, end: str, interval: str) -> pd.DataFrame:
-    """Download OHLCV with one retry on empty response (yfinance rate limiting)."""
-    for attempt in range(2):
-        df = yf.download(symbol, start=start, end=end, interval=interval,
-                         auto_adjust=True, progress=False)
+
+def download_alpaca(symbol: str, start: str, end: str, interval: str) -> pd.DataFrame:
+    """Download intraday OHLCV bars from Alpaca."""
+    api_key = os.environ.get("ALPACA_KEY")
+    secret_key = os.environ.get("ALPACA_SECRET")
+    if not api_key or not secret_key:
+        raise ValueError(
+            "ALPACA_KEY and ALPACA_SECRET must be set for intraday backtests."
+        )
+
+    client = StockHistoricalDataClient(api_key, secret_key)
+    tf_map = {
+        "1h": TimeFrame.Hour,
+        "15m": TimeFrame(15, TimeFrameUnit.Minute),
+        "5m": TimeFrame(5, TimeFrameUnit.Minute),
+    }
+    req = StockBarsRequest(
+        symbol_or_symbols=symbol,
+        timeframe=tf_map[interval],
+        start=start,
+        end=end,
+    )
+    bars = client.get_stock_bars(req)
+    df = getattr(bars, "df", pd.DataFrame())
+    if df.empty:
+        return df
+    if isinstance(df.index, pd.MultiIndex):
+        df = df.reset_index(level=0, drop=True)
+    df.columns = [c.capitalize() for c in df.columns]
+    return df
+
+
+def download_with_retry(
+    symbol: str,
+    start: str,
+    end: str,
+    interval: str,
+    retries: int = 2,
+) -> pd.DataFrame:
+    """Download OHLCV. Uses Alpaca for intraday, yfinance for daily and above."""
+    if interval in INTRADAY_INTERVALS:
+        return download_alpaca(symbol, start, end, interval)
+    if interval not in YFINANCE_INTERVALS:
+        raise ValueError(
+            f"Unsupported interval '{interval}'. Use one of: "
+            f"{', '.join(sorted(SUPPORTED_INTERVALS))}."
+        )
+
+    df = pd.DataFrame()
+    for attempt in range(retries):
+        df = yf.download(
+            symbol,
+            start=start,
+            end=end,
+            interval=interval,
+            auto_adjust=True,
+            progress=False,
+        )
         if not df.empty:
             return df
-        if attempt == 0:
-            log.warning("yfinance returned empty — waiting 60s and retrying")
-            time.sleep(60)
+        if attempt < retries - 1:
+            log.warning("yfinance returned empty; retrying in 3s")
+            time.sleep(3)
     return df
 
 
@@ -85,11 +145,16 @@ def run_backtest(req: BacktestRequest) -> BacktestResponse:
     """
     Run a full walk-forward backtest for the given parameters.
     Returns a BacktestResponse with stats, trade list, and equity curve.
-    Raises ValueError if no data is returned by yfinance.
+    Raises ValueError if no data is returned by the selected market data provider.
     """
-    df = _download_with_retry(req.symbol, req.start, req.end, req.interval)
+    df = download_with_retry(req.symbol, req.start, req.end, req.interval)
     if df.empty:
-        raise ValueError(f"No price data for {req.symbol} between {req.start} and {req.end}")
+        provider = "Alpaca" if req.interval in INTRADAY_INTERVALS else "yfinance"
+        raise ValueError(
+            f"No data returned from {provider} for {req.symbol} between "
+            f"{req.start} and {req.end}. "
+            "Check the symbol and date range."
+        )
 
     prices: pd.Series = df["Close"].squeeze().dropna()
 

@@ -2,10 +2,20 @@
  * Backtest.jsx
  * Simulates the RSI trading strategy against historical stock price records.
  */
-import React, { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useBacktest } from '../hooks/useBacktest'
 import StatCard from '../components/StatCard'
 import EquityChart from '../components/EquityChart'
+
+import TickerSelect from '../components/TickerSelect'
+import RSIPeriodSelect from '../components/RSIPeriodSelect'
+
+const MIN_DAYS_REQUIRED = {
+  '1d': 90,
+  '1h': 7,
+  '15m': 3,
+  '5m': 2,
+}
 
 export default function Backtest() {
   const { result, loading, error, run } = useBacktest()
@@ -22,8 +32,63 @@ export default function Backtest() {
   const [takeProfitPct, setTakeProfitPct] = useState(10)
   const [startCapital, setStartCapital] = useState(10000)
 
+  const handleIntervalChange = (e) => {
+    const newInterval = e.target.value
+    const today = new Date()
+    const fmt = (d) => {
+      const year = d.getFullYear()
+      const month = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    }
+
+    const defaults = {
+      '1d': {
+        start: fmt(new Date(today.getFullYear() - 2, today.getMonth(), today.getDate())),
+        end: fmt(today),
+      },
+      '1h': {
+        start: fmt(new Date(today.getTime() - 55 * 24 * 60 * 60 * 1000)),
+        end: fmt(today),
+      },
+      '15m': {
+        start: fmt(new Date(today.getTime() - 55 * 24 * 60 * 60 * 1000)),
+        end: fmt(today),
+      },
+      '5m': {
+        start: fmt(new Date(today.getTime() - 55 * 24 * 60 * 60 * 1000)),
+        end: fmt(today),
+      },
+    }
+
+    const range = defaults[newInterval] || defaults['1d']
+    setIntervalVal(newInterval)
+    setStart(range.start)
+    setEnd(range.end)
+  }
+
+  const dateRangeDays = useMemo(() => {
+    if (!start || !end) return 0
+
+    const startDate = new Date(start)
+    const endDate = new Date(end)
+    const days = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24))
+
+    return Number.isFinite(days) ? days : 0
+  }, [start, end])
+
+  const minDays = MIN_DAYS_REQUIRED[interval] || 90
+  const dateRangeTooShort = dateRangeDays < minDays
+  const rsiThresholdInvalid = oversold !== "" && overbought !== "" && oversold >= overbought
+  const runDisabled = loading || dateRangeTooShort || rsiThresholdInvalid
+
+  const capitalValue = Number(startCapital)
+  const capitalLabel = Number.isFinite(capitalValue) ? capitalValue.toLocaleString() : '0'
+
   const handleSubmit = (e) => {
     e.preventDefault()
+    if (runDisabled) return
+
     run({
       symbol: symbol.toUpperCase(),
       start,
@@ -101,12 +166,9 @@ export default function Backtest() {
           <div style={rowStyle}>
             <div>
               <label style={labelStyle}>Ticker Symbol</label>
-              <input
-                type="text"
+              <TickerSelect
                 value={symbol}
-                onChange={(e) => setSymbol(e.target.value)}
-                style={inputStyle}
-                required
+                onChange={setSymbol}
               />
             </div>
             <div>
@@ -150,26 +212,26 @@ export default function Backtest() {
               <label style={labelStyle}>Interval</label>
               <select
                 value={interval}
-                onChange={(e) => setIntervalVal(e.target.value)}
+                onChange={handleIntervalChange}
                 style={inputStyle}
               >
                 <option value="1d">Daily (1d)</option>
+                <option value="1wk">Weekly (1wk)</option>
                 <option value="1h">Hourly (1h)</option>
+                <option value="15m">15 Minute (15m)</option>
+                <option value="5m">5 Minute (5m)</option>
               </select>
-              {interval === '1h' && (
+              {['1h', '15m', '5m'].includes(interval) && (
                 <p style={{ fontSize: 11, color: '#f59e0b', marginTop: 4 }}>
-                  ⚠ Hourly interval downloads more data and takes ~60s longer
+                  Intraday intervals use Alpaca historical data and may take longer.
                 </p>
               )}
             </div>
             <div>
               <label style={labelStyle}>RSI Period</label>
-              <input
-                type="number"
+              <RSIPeriodSelect
                 value={rsiPeriod}
-                onChange={(e) => setRsiPeriod(e.target.value)}
-                style={inputStyle}
-                required
+                onChange={setRsiPeriod}
               />
             </div>
           </div>
@@ -179,8 +241,14 @@ export default function Backtest() {
               <label style={labelStyle}>Oversold (Buy)</label>
               <input
                 type="number"
+                min={1}
+                max={49}
                 value={oversold}
-                onChange={(e) => setOversold(e.target.value)}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value)
+                  if (!isNaN(val)) setOversold(val)
+                  else if (e.target.value === "") setOversold("")
+                }}
                 style={inputStyle}
                 required
               />
@@ -189,8 +257,14 @@ export default function Backtest() {
               <label style={labelStyle}>Overbought (Sell)</label>
               <input
                 type="number"
+                min={51}
+                max={99}
                 value={overbought}
-                onChange={(e) => setOverbought(e.target.value)}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value)
+                  if (!isNaN(val)) setOverbought(val)
+                  else if (e.target.value === "") setOverbought("")
+                }}
                 style={inputStyle}
                 required
               />
@@ -202,9 +276,15 @@ export default function Backtest() {
               <label style={labelStyle}>Stop Loss %</label>
               <input
                 type="number"
+                min={1}
+                max={50}
                 step="0.1"
                 value={stopLossPct}
-                onChange={(e) => setStopLossPct(e.target.value)}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value)
+                  if (!isNaN(val)) setStopLossPct(val)
+                  else if (e.target.value === "") setStopLossPct("")
+                }}
                 style={inputStyle}
                 required
               />
@@ -213,18 +293,68 @@ export default function Backtest() {
               <label style={labelStyle}>Take Profit %</label>
               <input
                 type="number"
+                min={1}
+                max={100}
                 step="0.1"
                 value={takeProfitPct}
-                onChange={(e) => setTakeProfitPct(e.target.value)}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value)
+                  if (!isNaN(val)) setTakeProfitPct(val)
+                  else if (e.target.value === "") setTakeProfitPct("")
+                }}
                 style={inputStyle}
                 required
               />
             </div>
           </div>
 
+          {rsiThresholdInvalid && (
+            <p style={{ color: "#ef4444", fontSize: 11, marginTop: -8, marginBottom: 12 }}>
+              Oversold must be lower than Overbought
+            </p>
+          )}
+
+          {dateRangeTooShort && (
+            <div style={{
+              background: "#1c0f0f",
+              border: "1px solid #ef4444",
+              borderRadius: 6,
+              padding: "10px 14px",
+              marginTop: 8,
+              marginBottom: 12,
+              fontSize: 12,
+              color: "#fca5a5",
+            }}>
+              <span aria-hidden="true">&times;</span> Date range too short. {interval} interval needs at least {minDays} days.
+              {' '}
+              Currently selected: {dateRangeDays} days.
+            </div>
+          )}
+
+          <div style={{
+            background: "#0f1117",
+            border: "1px solid #2a2d3a",
+            borderRadius: 6,
+            padding: "10px 14px",
+            marginBottom: 12,
+            fontSize: 12,
+            color: "#64748b",
+          }}>
+            <span style={{ color: "#94a3b8" }}>Ready to test: </span>
+            <span style={{ color: "#e2e8f0" }}>{symbol.toUpperCase()}</span>
+            {' \u00b7 '}
+            <span style={{ color: "#e2e8f0" }}>{interval}</span>
+            {' \u00b7 '}
+            <span style={{ color: "#e2e8f0" }}>{dateRangeDays} days</span>
+            {' \u00b7 '}
+            RSI {rsiPeriod} {'\u00b7'} SL {stopLossPct}% {'\u00b7'} TP {takeProfitPct}%
+            {' \u00b7 '}
+            <span style={{ color: "#10b981" }}>${capitalLabel} capital</span>
+          </div>
+
           <button
             type="submit"
-            disabled={loading}
+            disabled={runDisabled}
             style={{
               width: '100%',
               padding: '12px',
@@ -235,8 +365,8 @@ export default function Backtest() {
               fontWeight: '600',
               fontSize: '14px',
               marginTop: '12px',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              opacity: loading ? 0.7 : 1,
+              cursor: runDisabled ? 'not-allowed' : 'pointer',
+              opacity: runDisabled ? 0.5 : 1,
               boxShadow: '0 4px 12px rgba(59, 130, 246, 0.2)',
             }}
           >
@@ -244,7 +374,7 @@ export default function Backtest() {
           </button>
           {loading && (
             <p style={{ fontSize: 12, color: '#64748b', marginTop: 8, textAlign: 'center' }}>
-              Hourly backtests can take 60-90 seconds. Please wait...
+              Intraday backtests can take 60-90 seconds. Please wait...
             </p>
           )}
         </form>
@@ -342,8 +472,81 @@ export default function Backtest() {
               />
             </div>
 
+            {result && result.stats.total_trades === 0 && (
+              <div style={{
+                background: "#1c1a0f",
+                border: "1px solid #f59e0b",
+                borderRadius: 8,
+                padding: "12px 16px",
+                marginTop: 24,
+                marginBottom: 0,
+                fontSize: 13,
+                color: "#fbbf24",
+              }}>
+                ⚠ No trades were executed in this period. This usually means:
+                <ul style={{ marginTop: 6, paddingLeft: 20, color: "#94a3b8" }}>
+                  <li>Date range is too short (use at least 1 year)</li>
+                  <li>RSI never crossed your thresholds in this period</li>
+                  <li>Try widening thresholds: oversold 35, overbought 65</li>
+                  <li>Try a more volatile stock or a bear market date range</li>
+                </ul>
+              </div>
+            )}
+
             {/* Equity Curve Chart */}
             <EquityChart data={result.equity_curve} />
+
+            {(() => {
+              const interpret = (stats) => {
+                const tips = []
+                if (stats.total_trades < 10 && stats.total_trades > 0)
+                  tips.push({ level: "warn", msg: "Less than 10 trades — results are not statistically reliable. Use a longer date range." })
+                if (stats.total_trades > 0 && stats.profit_factor < 1)
+                  tips.push({ level: "bad",  msg: "Profit factor below 1 means this strategy loses money overall in this period." })
+                if (stats.total_trades > 0 && stats.profit_factor >= 1 && stats.profit_factor < 1.3)
+                  tips.push({ level: "warn", msg: "Profit factor between 1 and 1.3 is marginal — fees and slippage could erase this edge." })
+                if (stats.total_trades > 0 && stats.profit_factor >= 1.5)
+                  tips.push({ level: "good", msg: "Profit factor above 1.5 is solid. Validate on a different date range before going live." })
+                if (stats.total_trades > 0 && stats.win_rate < 0.4)
+                  tips.push({ level: "warn", msg: "Win rate below 40% — the strategy loses more often than it wins. Widen RSI thresholds." })
+                if (stats.total_trades > 0 && stats.max_drawdown_pct < -20)
+                  tips.push({ level: "bad",  msg: "Max drawdown over 20% — too much risk per trade. Reduce stop loss % or risk per trade %." })
+                if (stats.total_trades > 0 && stats.sharpe_ratio > 1)
+                  tips.push({ level: "good", msg: "Sharpe ratio above 1 — good risk-adjusted return." })
+                if (stats.total_trades > 0 && stats.sharpe_ratio < 0)
+                  tips.push({ level: "bad",  msg: "Negative Sharpe ratio — you would have done better holding cash." })
+                if (stats.total_trades > 0 && Math.abs(stats.avg_loss) > stats.avg_win)
+                  tips.push({ level: "bad",  msg: "Average loss is bigger than average win — increase take profit % or decrease stop loss %." })
+                return tips
+              }
+
+              const COLORS = { good: "#10b981", warn: "#f59e0b", bad: "#ef4444" }
+              const ICONS  = { good: "✓", warn: "⚠", bad: "✕" }
+
+              const tipsList = interpret(result.stats);
+              if (tipsList.length === 0) return null;
+
+              return (
+                <div style={{ marginTop: 16 }}>
+                  <p style={{ fontSize: 12, color: "#64748b", marginBottom: 8, fontWeight: '600', letterSpacing: '0.05em' }}>
+                    STRATEGY ANALYSIS
+                  </p>
+                  {tipsList.map((tip, i) => (
+                    <div key={i} style={{
+                      display: "flex", gap: 10, padding: "10px 14px",
+                      marginBottom: 6, borderRadius: 6,
+                      background: COLORS[tip.level] + "12",
+                      border: `1px solid ${COLORS[tip.level]}33`,
+                    }}>
+                      <span style={{ color: COLORS[tip.level], fontWeight: 700, fontSize: 14 }}>
+                        {ICONS[tip.level]}
+                      </span>
+                      <span style={{ fontSize: 13, color: "#cbd5e1" }}>{tip.msg}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
 
             {/* Trade Log */}
             <div style={{
