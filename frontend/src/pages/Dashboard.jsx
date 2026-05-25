@@ -71,8 +71,37 @@ export default function Dashboard() {
     return val.toFixed(2)
   }
 
-  // Handle loading skeletons
+  // Handle loading skeletons & error states
   if (status === null) {
+    if (error) {
+      return (
+        <div style={{
+          maxWidth: '500px',
+          margin: '100px auto',
+          textAlign: 'center',
+          background: 'rgba(239, 68, 68, 0.08)',
+          border: '1px solid var(--red)',
+          color: 'var(--red)',
+          padding: '32px',
+          borderRadius: 'var(--radius)',
+        }}>
+          <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '12px', color: '#f87171' }}>API Unreachable</h2>
+          <p style={{ fontSize: '14px', color: 'var(--muted)', marginBottom: '16px' }}>
+            The trading bot backend could not be reached. Make sure your local Python server is running on port 8000.
+          </p>
+          <p style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', wordBreak: 'break-all' }}>
+            Details: {error}
+          </p>
+        </div>
+      )
+    }
+    if (loading) {
+      return (
+        <div style={{ color: 'var(--muted)', fontSize: '15px', textAlign: 'center', marginTop: '100px' }}>
+          Loading dashboard state...
+        </div>
+      )
+    }
     return (
       <div style={{ color: 'var(--muted)', fontSize: '15px', textAlign: 'center', marginTop: '100px' }}>
         Loading dashboard state...
