@@ -48,6 +48,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi import Request, status
+from fastapi.responses import JSONResponse
+
+API_KEY = os.getenv("API_KEY", "")
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    if request.url.path.startswith("/api"):
+        key = request.headers.get("X-API-Key", "")
+        if API_KEY and key != API_KEY:
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"detail": "Invalid API key"}
+            )
+    return await call_next(request)
+
+
 app.include_router(bot.router,       prefix="/api/bot",       tags=["bot"])
 app.include_router(backtest.router,  prefix="/api/backtest",  tags=["backtest"])
 app.include_router(optimizer.router, prefix="/api/optimizer", tags=["optimizer"])

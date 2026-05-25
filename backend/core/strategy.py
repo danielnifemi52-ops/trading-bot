@@ -55,8 +55,12 @@ def calc_rsi(prices: pd.Series, period: int = 14) -> pd.Series:
     for i in range(period, len(prices)):
         avg_gain = (avg_gain * (period - 1) + gain.iloc[i]) / period
         avg_loss = (avg_loss * (period - 1) + loss.iloc[i]) / period
-        rs = avg_gain / avg_loss if avg_loss != 0 else 100.0
-        rsi_vals.append(round(100 - (100 / (1 + rs)), 4))
+        if avg_loss == 0:
+            rsi_val = 100.0
+        else:
+            rs = avg_gain / avg_loss
+            rsi_val = 100.0 - (100.0 / (1.0 + rs))
+        rsi_vals.append(round(rsi_val, 4))
     return pd.Series(rsi_vals, index=prices.index)
 
 

@@ -39,7 +39,7 @@ def get_status():
 
 
 @router.post("/start")
-def start_bot(req: BotConfigRequest, session: Session = Depends(get_session)):
+async def start_bot(req: BotConfigRequest, session: Session = Depends(get_session)):
     """Start the trading bot with the given configuration."""
     if bot_state.is_running:
         raise HTTPException(status_code=409, detail="Bot is already running")

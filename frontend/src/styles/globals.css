@@ -1,0 +1,126 @@
+/**
+ * globals.css
+ * Global design tokens, resets, custom scrollbars, and helper classes.
+ * Delivers a premium dark-themed trading bot UI.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg: #090a0f;
+  --surface: #141722;
+  --surface-hover: #1c2030;
+  --border: #222634;
+  --border-focus: #3b82f6;
+  --text: #f1f5f9;
+  --muted: #64748b;
+  --green: #10b981;
+  --green-glow: rgba(16, 185, 129, 0.15);
+  --red: #ef4444;
+  --red-glow: rgba(239, 68, 68, 0.15);
+  --blue: #3b82f6;
+  --blue-glow: rgba(59, 130, 246, 0.15);
+  --yellow: #f59e0b;
+  --yellow-glow: rgba(245, 158, 11, 0.15);
+  --radius: 12px;
+  --radius-sm: 6px;
+  --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Outfit', 'Inter', sans-serif;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+input, select, textarea {
+  font-family: inherit;
+  font-size: 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  outline: none;
+  transition: var(--transition);
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+/* Recharts overrides to match theme */
+.recharts-default-tooltip {
+  background-color: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius) !important;
+  color: var(--text) !important;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+/* Helper Class for glassmorphism panels */
+.glass-panel {
+  background: rgba(20, 23, 34, 0.6);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}

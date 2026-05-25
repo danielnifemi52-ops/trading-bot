@@ -5,6 +5,9 @@ These do not hit Alpaca or Telegram — broker is always dry_run.
 """
 from fastapi.testclient import TestClient
 from main import app
+from db import init_db
+
+init_db()
 
 client = TestClient(app)
 
