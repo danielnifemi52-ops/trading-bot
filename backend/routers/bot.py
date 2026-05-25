@@ -32,7 +32,7 @@ def get_status():
         last_price=bot_state.last_price,
         last_rsi=bot_state.last_rsi,
         last_signal=bot_state.last_signal,
-        account_value=None,
+        account_value=10000.0,
         open_position=bot_state.open_position,
         config=bot_state.config,
     )

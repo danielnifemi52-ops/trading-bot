@@ -122,24 +122,34 @@ class BotRunner:
 
     def _tick(self) -> None:
         """One bot tick — fetch price, compute RSI, act on signal."""
-        if not market_is_open():
+        # ALWAYS fetch price and RSI so dashboard stays live
+        try:
+            prices  = fetch_prices(self.cfg.symbol)
+            rsi_ser = calc_rsi(prices, self.cfg.rsi_period)
+            rsi     = float(rsi_ser.iloc[-1])
+            price   = float(prices.iloc[-1])
+            signal  = get_signal(rsi, self.cfg)
+            acct    = self.broker.get_account_value()
+
+            self.last_rsi   = rsi
+            self.last_price = price
+
+            log.info(f"{self.cfg.symbol} ${price:.2f}  RSI={rsi:.1f}  {signal}")
+
+            # Always broadcast to WebSocket so dashboard updates
+            if self.on_tick:
+                self.on_tick(price=price, rsi=rsi, signal=signal, account=acct)
+
+        except Exception as e:
+            log.error(f"Data fetch error: {e}")
             return
 
-        prices  = fetch_prices(self.cfg.symbol)
-        rsi_ser = calc_rsi(prices, self.cfg.rsi_period)
-        rsi     = float(rsi_ser.iloc[-1])
-        price   = float(prices.iloc[-1])
-        signal  = get_signal(rsi, self.cfg)
-        acct    = self.broker.get_account_value()
+        # Only execute trades during market hours
+        if not market_is_open():
+            log.debug("Market closed — skipping order execution")
+            return
+
         has_pos = self.broker.has_position(self.cfg.symbol)
-
-        self.last_rsi    = rsi
-        self.last_price  = price
-
-        log.info(f"{self.cfg.symbol} ${price:.2f}  RSI={rsi:.1f}  {signal}  acct=${acct:,.2f}")
-
-        if self.on_tick:
-            self.on_tick(price=price, rsi=rsi, signal=signal, account=acct)
 
         # ── BUY ─────────────────────────────────────────────────────────
         if signal == "BUY" and not has_pos and self.last_signal != "BUY":

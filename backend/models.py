@@ -46,7 +46,7 @@ class BotConfigRequest(SQLModel):
     stop_loss_pct: float = 5.0
     take_profit_pct: float = 10.0
     risk_per_trade_pct: float = 2.0
-    poll_interval_seconds: int = 300
+    poll_interval_seconds: int = 30
     dry_run: bool = True
 
 
