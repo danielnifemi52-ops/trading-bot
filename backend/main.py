@@ -42,10 +42,16 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("CORS_ORIGIN", "*")],
+    allow_origins=[
+        os.getenv("CORS_ORIGIN", "https://trading-bot-nine-sepia.vercel.app"),
+        "https://trading-bot-nine-sepia.vercel.app",
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 from fastapi import Request, status
