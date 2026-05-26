@@ -26,6 +26,10 @@ router = APIRouter()
 @router.get("/status", response_model=BotStatusResponse)
 def get_status():
     """Return the current bot status."""
+    runner = bot_state._runner
+    stream_active = False
+    if runner:
+        stream_active = getattr(runner, '_stream_active', False)
     return BotStatusResponse(
         running=bot_state.is_running,
         symbol=bot_state.config.symbol if bot_state.config else None,
@@ -35,6 +39,7 @@ def get_status():
         account_value=10000.0,
         open_position=bot_state.open_position,
         config=bot_state.config,
+        stream_active=stream_active,
     )
 
 
@@ -59,7 +64,7 @@ async def start_bot(req: BotConfigRequest, session: Session = Depends(get_sessio
 
     loop = asyncio.get_event_loop()
 
-    def on_tick(price: float, rsi: float, signal: str, account: float):
+    def on_tick(price: float, rsi: float, signal: str, account: float, source: str = "poll"):
         """Persist a BotLog row and broadcast to WebSocket clients."""
         from db import engine
         try:
@@ -75,12 +80,13 @@ async def start_bot(req: BotConfigRequest, session: Session = Depends(get_sessio
             log.error(f"on_tick DB write failed: {e}")
 
         data = {
-            "price":   price,
-            "rsi":     rsi,
-            "signal":  signal,
+            "price": price,
+            "rsi": rsi,
+            "signal": signal,
             "account": account,
-            "symbol":  cfg.symbol,
-            "ts":      datetime.utcnow().isoformat(),
+            "symbol": cfg.symbol,
+            "ts": datetime.utcnow().isoformat(),
+            "source": source,
         }
         try:
             asyncio.run_coroutine_threadsafe(manager.broadcast(data), loop)
@@ -107,7 +113,7 @@ async def start_bot(req: BotConfigRequest, session: Session = Depends(get_sessio
             log.error(f"on_trade DB write failed: {e}")
 
     runner = BotRunner(cfg=cfg, broker=broker, alerter=alerter,
-                       on_tick=on_tick, on_trade=on_trade)
+        on_tick=on_tick, on_trade=on_trade)
     bot_state.start(runner, req)
     log.info(f"Bot started for {req.symbol}")
     return {"ok": True, "message": f"Bot started for {req.symbol}"}
@@ -124,6 +130,6 @@ def stop_bot():
 def get_logs(limit: int = 100, session: Session = Depends(get_session)):
     """Return the most recent bot log entries."""
     rows = session.exec(
-        select(BotLog).order_by(BotLog.id.desc()).limit(limit)  # type: ignore[arg-type]
+        select(BotLog).order_by(BotLog.id.desc()).limit(limit) # type: ignore[arg-type]
     ).all()
     return list(reversed(rows))

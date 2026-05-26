@@ -9,7 +9,9 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections import deque
 from datetime import datetime, time as dt_time, timedelta, timezone
+from typing import Callable, Optional
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -26,6 +28,7 @@ from core.strategy import (
 )
 from services.alerts import SyncAlerter
 from services.broker import Broker, is_crypto
+from services.stream import PriceStreamer
 
 log = logging.getLogger(__name__)
 
@@ -120,8 +123,9 @@ class BotRunner:
         cfg: BotConfig,
         broker: Broker,
         alerter: SyncAlerter,
-        on_tick=None,
-        on_trade=None,
+        on_tick: Optional[Callable] = None,
+        on_trade: Optional[Callable] = None,
+        use_stream: bool = True,
     ):
         """Initialise with config, broker, alerter, and optional callbacks."""
         self.cfg = cfg
@@ -136,6 +140,10 @@ class BotRunner:
         self.last_signal: str = "HOLD"
         self.open_trade: dict | None = None
         self._last_heartbeat: float = 0.0
+        self._price_buffer: deque = deque(maxlen=500)
+        self._streamer: Optional[PriceStreamer] = None
+        self._use_stream = use_stream
+        self._stream_active = False
 
     def start(self) -> None:
         """Spawn the polling thread. Idempotent; safe to call twice."""
@@ -143,18 +151,59 @@ class BotRunner:
             log.warning("BotRunner.start() called but thread already running")
             return
         self._stop_evt.clear()
+
+        # Start real-time price stream if enabled
+        if self._use_stream:
+            try:
+                self._streamer = PriceStreamer(
+                    symbol=self.cfg.symbol,
+                    on_price=self._on_stream_price,
+                )
+                self._streamer.start()
+                self._stream_active = True
+                log.info(f"Real-time stream started for {self.cfg.symbol}")
+            except Exception as e:
+                log.warning(f"Stream failed, falling back to polling: {e}")
+                self._use_stream = False
+
         self._thread = threading.Thread(target=self._loop, daemon=True, name="bot-loop")
         self._thread.start()
         log.info(f"Bot loop started for {self.cfg.symbol}")
 
     def stop(self) -> None:
         """Signal the loop to stop. Returns immediately; thread winds down on its own."""
+        if self._streamer:
+            self._streamer.stop()
+            self._stream_active = False
         self._stop_evt.set()
         log.info("Bot stop requested")
 
     def is_running(self) -> bool:
         """Return True if the bot thread is alive."""
         return self._thread is not None and self._thread.is_alive()
+
+    def _on_stream_price(self, symbol, price, high, low, volume, timestamp):
+        """
+        Called by the streamer on every price tick.
+        Updates last_price immediately for dashboard display.
+        Adds price to buffer for RSI calculation.
+        """
+        self.last_price = price
+        # Add to price buffer for RSI calculation
+        self._price_buffer.append(price)
+
+        # Broadcast to dashboard immediately if we have enough data
+        if self.on_tick and len(self._price_buffer) >= self.cfg.rsi_period + 1:
+            prices = pd.Series(list(self._price_buffer))
+            rsi_ser = calc_rsi(prices, self.cfg.rsi_period)
+            rsi = float(rsi_ser.iloc[-1]) if not pd.isna(rsi_ser.iloc[-1]) else 50.0
+            self.last_rsi = rsi
+            signal = get_signal(rsi, self.cfg)
+            self.last_signal = signal
+            acct = self.broker.get_account_value()
+            self.on_tick(
+                price=price, rsi=rsi, signal=signal, account=acct, source="stream"
+            )
 
     def _loop(self) -> None:
         """Main loop; runs until stop() is called."""
@@ -174,7 +223,16 @@ class BotRunner:
         log.info("Bot loop exited cleanly")
 
     def _tick(self) -> None:
-        """One bot tick: fetch price, compute RSI, act on signal."""
+        """
+        One bot tick: in streaming mode, check buffer and execute signals.
+        In polling mode, fetch prices and execute signals.
+        """
+        # If streaming, use price buffer for signal execution
+        if self._use_stream and len(self._price_buffer) >= self.cfg.rsi_period + 1:
+            self._execute_signal_from_buffer()
+            return
+
+        # Fallback: fetch prices via HTTP polling
         try:
             prices = fetch_prices(self.cfg.symbol)
             rsi_ser = calc_rsi(prices, self.cfg.rsi_period)
@@ -186,21 +244,43 @@ class BotRunner:
             self.last_rsi = rsi
             self.last_price = price
 
-            log.info(f"{self.cfg.symbol} ${price:.2f}  RSI={rsi:.1f}  {signal}")
+            log.info(f"{self.cfg.symbol} ${price:.2f} RSI={rsi:.1f} {signal}")
 
             if self.on_tick:
                 self.on_tick(price=price, rsi=rsi, signal=signal, account=acct)
 
+            self._execute_signal(signal, price, rsi, acct)
+
         except Exception as e:
             log.error(f"Data fetch error: {e}")
-            return
 
-        if not market_is_open(self.cfg.symbol):
-            log.debug("Market closed - skipping order execution")
-            return
+        if time.time() - self._last_heartbeat > 3600:
+            self.alerter.heartbeat(
+                symbol=self.cfg.symbol,
+                rsi=self.last_rsi or 50.0,
+                price=self.last_price or 0.0,
+                account=self.broker.get_account_value(),
+            )
+            self._last_heartbeat = time.time()
 
+    def _execute_signal_from_buffer(self):
+        """Execute signal logic using prices from the streaming buffer."""
+        prices = pd.Series(list(self._price_buffer))
+        rsi_ser = calc_rsi(prices, self.cfg.rsi_period)
+        rsi = float(rsi_ser.iloc[-1]) if not pd.isna(rsi_ser.iloc[-1]) else 50.0
+        price = self.last_price or float(prices.iloc[-1])
+        signal = get_signal(rsi, self.cfg)
+        acct = self.broker.get_account_value()
         has_pos = self.broker.has_position(self.cfg.symbol)
 
+        self._execute_signal(signal, price, rsi, acct, has_pos)
+
+    def _execute_signal(self, signal, price, rsi, acct, has_pos=None):
+        """Extracted trade execution logic."""
+        if has_pos is None:
+            has_pos = self.broker.has_position(self.cfg.symbol)
+
+        # BUY signal
         if signal == "BUY" and not has_pos and self.last_signal != "BUY":
             qty = position_size(acct, price, self.cfg, crypto=is_crypto(self.cfg.symbol))
             sl = stop_price(price, self.cfg)
@@ -226,6 +306,7 @@ class BotRunner:
                             "symbol": self.cfg.symbol,
                         })
 
+        # SELL via RSI
         elif signal == "SELL" and has_pos and self.last_signal != "SELL":
             if self.broker.close_position(self.cfg.symbol) and self.open_trade:
                 pnl = (price - self.open_trade["entry"]) * self.open_trade["qty"]
@@ -249,6 +330,7 @@ class BotRunner:
                     })
                 self.open_trade = None
 
+        # Stop loss / take profit checks
         elif has_pos and self.open_trade:
             if should_stop_loss(price, self.open_trade["entry"], self.cfg):
                 if self.broker.close_position(self.cfg.symbol):
@@ -297,12 +379,3 @@ class BotRunner:
                     self.open_trade = None
 
         self.last_signal = signal
-
-        if time.time() - self._last_heartbeat > 3600:
-            self.alerter.heartbeat(
-                symbol=self.cfg.symbol,
-                rsi=rsi,
-                price=price,
-                account=acct,
-            )
-            self._last_heartbeat = time.time()

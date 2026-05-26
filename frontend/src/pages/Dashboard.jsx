@@ -54,9 +54,9 @@ export default function Dashboard() {
   }, [liveData, status?.symbol])
 
   // Get current active values (prefer WebSocket live data, fall back to last status value)
-  const price   = liveData?.price   ?? status?.last_price   ?? null
-  const rsi     = liveData?.rsi     ?? status?.last_rsi     ?? null
-  const signal  = liveData?.signal  ?? status?.last_signal  ?? 'HOLD'
+  const price = liveData?.price ?? status?.last_price ?? null
+  const rsi = liveData?.rsi ?? status?.last_rsi ?? null
+  const signal = liveData?.signal ?? status?.last_signal ?? 'HOLD'
   const account = liveData?.account ?? status?.account_value ?? null
 
   const formatPrice = (val) => {
@@ -106,7 +106,7 @@ export default function Dashboard() {
           marginBottom: 12,
           alignSelf: 'flex-start',
         }}>
-          {'\u20bf CRYPTO MODE - 24/7 trading active \u00b7 No PDT restrictions'}
+          {'₿ CRYPTO MODE - 24/7 trading active · No PDT restrictions'}
         </div>
       )}
 
@@ -125,7 +125,20 @@ export default function Dashboard() {
         <StatCard
           label="RSI Value (14h)"
           value={rsi !== null ? formatRsi(rsi) : '--'}
-          sub="Wilder's Smoothed RSI"
+          sub={
+            <>
+              {liveData?.source === 'stream' ? (
+                <span style={{ color: '#22c55e' }}>⚡ Live stream</span>
+              ) : status?.stream_active ? (
+                <span style={{ color: '#22c55e' }}>⚡ Streaming</span>
+              ) : (
+                <>
+                  {"Wilder's Smoothed RSI"}
+                  {status?.config?.poll_interval_seconds && ` · ${status.config.poll_interval_seconds}s interval`}
+                </>
+              )}
+            </>
+          }
           highlight={rsi !== null ? (rsi <= status?.config?.oversold ? 'var(--green)' : rsi >= status?.config?.overbought ? 'var(--red)' : 'var(--text)') : undefined}
         />
         <StatCard
