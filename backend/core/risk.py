@@ -16,6 +16,6 @@ def should_take_profit(current_price: float, entry_price: float, cfg: BotConfig)
     return current_price >= take_profit_price(entry_price, cfg)
 
 
-def unrealised_pnl(current_price: float, entry_price: float, qty: int) -> float:
+def unrealised_pnl(current_price: float, entry_price: float, qty: float) -> float:
     """Calculate unrealised P&L for an open long position."""
     return round((current_price - entry_price) * qty, 4)

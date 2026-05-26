@@ -1,12 +1,29 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 
 const TICKERS = [
-  { group: "Tech",        symbols: ["AAPL","MSFT","GOOGL","AMZN","META","NVDA","TSLA","NFLX","AMD","INTC"] },
-  { group: "Finance",     symbols: ["JPM","BAC","GS","MS","V","MA","PYPL","BRK-B","C","WFC"] },
-  { group: "ETFs",        symbols: ["SPY","QQQ","IWM","DIA","VTI","ARKK","GLD","SLV","USO","TLT"] },
-  { group: "Healthcare",  symbols: ["JNJ","PFE","MRNA","UNH","ABBV","LLY","CVS","MRK","TMO","ABT"] },
-  { group: "Energy",      symbols: ["XOM","CVX","COP","SLB","OXY","BP","PSX","VLO","MPC","HAL"] },
+  {
+    group: "Crypto",
+    symbols: [
+      "BTC/USD", "ETH/USD", "SOL/USD", "BNB/USD",
+      "AVAX/USD", "MATIC/USD", "LINK/USD", "DOT/USD",
+      "ADA/USD", "DOGE/USD", "XRP/USD", "LTC/USD",
+    ],
+  },
+  {
+    group: "Tech Stocks",
+    symbols: ["AAPL","MSFT","GOOGL","AMZN","META","NVDA","TSLA"],
+  },
+  {
+    group: "ETFs",
+    symbols: ["SPY","QQQ","IWM","DIA","VTI","ARKK"],
+  },
+  {
+    group: "Finance",
+    symbols: ["JPM","BAC","GS","V","MA"],
+  },
 ];
+
+const isCrypto = (sym) => sym.includes("/");
 
 export default function TickerSelect({ value, onChange }) {
   const [showTickerDropdown, setShowTickerDropdown] = useState(false);
@@ -58,9 +75,22 @@ export default function TickerSelect({ value, onChange }) {
                         padding: "4px 10px", fontSize: 11, borderRadius: 4,
                         background: value === symbol ? "#3b82f6" : "#0f1117",
                         color: value === symbol ? "#fff" : "#94a3b8",
-                        border: "1px solid #2a2d3a", cursor: "pointer"
+                        border: "1px solid #2a2d3a", cursor: "pointer",
+                        display: "inline-flex", alignItems: "center", gap: 6
                       }}
                     >
+                      {isCrypto(symbol) && (
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: "50%",
+                            background: "#f59e0b",
+                            display: "inline-block",
+                          }}
+                        />
+                      )}
                       {symbol}
                     </button>
                   ))}

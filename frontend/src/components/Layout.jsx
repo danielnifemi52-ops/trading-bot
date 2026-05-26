@@ -3,7 +3,7 @@
  * Responsive sidebar layout shell. Includes navigation, top header,
  * and handles main content rendering.
  */
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
 // Reusable Navigation Link Component with nice SVG icons
@@ -33,7 +33,7 @@ function SidebarLink({ to, label, icon, onClick }) {
   )
 }
 
-export default function Layout({ children, botRunning }) {
+export default function Layout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
 

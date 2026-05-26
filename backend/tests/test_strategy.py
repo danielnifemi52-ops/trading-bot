@@ -160,7 +160,14 @@ def test_position_size_never_negative():
 
 
 def test_position_size_returns_int():
-    """Position size must always be an integer (whole shares)."""
+    """Stock position size must be an integer (whole shares)."""
     cfg = make_cfg()
     result = position_size(10_000.0, 150.0, cfg)
     assert isinstance(result, int)
+
+
+def test_position_size_crypto_returns_fractional_quantity():
+    """Crypto position size may be fractional base-currency units."""
+    cfg = make_cfg(risk_per_trade_pct=2.0, stop_loss_pct=5.0)
+    result = position_size(10_000.0, 50_000.0, cfg, crypto=True)
+    assert result == pytest.approx(0.08)

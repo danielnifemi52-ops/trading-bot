@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 from models import BacktestRequest, BacktestResponse
-from services.backtester import download_alpaca, run_backtest
+from services.backtester import download_alpaca, download_crypto_alpaca, run_backtest
 
 
 def test_backtest_run_success():
@@ -94,6 +94,31 @@ def test_weekly_backtest_uses_yfinance():
         assert len(res.equity_curve) == 50
 
 
+def test_crypto_daily_backtest_uses_alpaca_not_yfinance():
+    """Crypto backtests should use Alpaca even for daily intervals."""
+    dates = pd.date_range(start="2022-01-01", periods=50)
+    prices = [50_000.0] * 50
+    mock_df = pd.DataFrame({"Close": prices}, index=dates)
+    req = BacktestRequest(
+        symbol="BTC/USD",
+        start="2022-01-01",
+        end="2022-02-20",
+        interval="1d",
+        oversold=100.0,
+        overbought=101.0,
+    )
+
+    with patch("services.backtester.download_crypto_alpaca", return_value=mock_df) as mock_crypto, \
+         patch("services.backtester.download_alpaca") as mock_alpaca, \
+         patch("services.backtester.yf.download") as mock_yf:
+        res = run_backtest(req)
+
+        mock_crypto.assert_called_once_with("BTC/USD", "2022-01-01", "2022-02-20", "1d")
+        mock_alpaca.assert_not_called()
+        mock_yf.assert_not_called()
+        assert res.trades[0]["qty"] == pytest.approx(0.08)
+
+
 def test_unsupported_interval_raises_value_error():
     """Unsupported intervals must not fall back to yfinance."""
     req = BacktestRequest(
@@ -162,6 +187,13 @@ def test_download_alpaca_requires_credentials():
     with patch.dict("services.backtester.os.environ", {}, clear=True):
         with pytest.raises(ValueError, match="ALPACA_KEY and ALPACA_SECRET"):
             download_alpaca("AAPL", "2022-01-01", "2022-01-02", "1h")
+
+
+def test_download_crypto_alpaca_requires_credentials():
+    """Crypto Alpaca downloads need API credentials in the environment."""
+    with patch.dict("services.backtester.os.environ", {}, clear=True):
+        with pytest.raises(ValueError, match="ALPACA_KEY and ALPACA_SECRET"):
+            download_crypto_alpaca("BTC/USD", "2022-01-01", "2022-01-02", "1d")
 
 
 @pytest.mark.parametrize(

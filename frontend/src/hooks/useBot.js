@@ -53,7 +53,11 @@ export function useBot() {
         attempts = 0
       }
       ws.onmessage = (e) => {
-        try { setLive(JSON.parse(e.data)) } catch {}
+        try {
+          setLive(JSON.parse(e.data))
+        } catch (err) {
+          console.debug('Invalid WebSocket message', err)
+        }
       }
       ws.onclose = () => {
         if (attempts < 5) {

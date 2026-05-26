@@ -2,7 +2,7 @@
  * BotControls.jsx
  * Control panel to start/stop the bot and configure its parameters.
  */
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 
 import TickerSelect from './TickerSelect'
 import RSIPeriodSelect from './RSIPeriodSelect'
@@ -22,15 +22,17 @@ export default function BotControls({ status, onStart, onStop, loading }) {
   useEffect(() => {
     if (status && status.running && status.config) {
       const cfg = status.config
-      setSymbol(cfg.symbol || 'AAPL')
-      setRsiPeriod(cfg.rsi_period || 14)
-      setOversold(cfg.oversold || 30)
-      setOverbought(cfg.overbought || 70)
-      setStopLossPct(cfg.stop_loss_pct || 5)
-      setTakeProfitPct(cfg.take_profit_pct || 10)
-      setRiskPerTradePct(cfg.risk_per_trade_pct || 2)
-      setPollIntervalSeconds(cfg.poll_interval_seconds || 300)
-      setDryRun(cfg.dry_run !== undefined ? cfg.dry_run : true)
+      queueMicrotask(() => {
+        setSymbol(cfg.symbol || 'AAPL')
+        setRsiPeriod(cfg.rsi_period || 14)
+        setOversold(cfg.oversold || 30)
+        setOverbought(cfg.overbought || 70)
+        setStopLossPct(cfg.stop_loss_pct || 5)
+        setTakeProfitPct(cfg.take_profit_pct || 10)
+        setRiskPerTradePct(cfg.risk_per_trade_pct || 2)
+        setPollIntervalSeconds(cfg.poll_interval_seconds || 300)
+        setDryRun(cfg.dry_run !== undefined ? cfg.dry_run : true)
+      })
     }
   }, [status])
 

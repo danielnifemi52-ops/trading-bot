@@ -18,7 +18,7 @@ router = APIRouter()
 async def run(req: BacktestRequest):
     """
     Run a walk-forward backtest. Runs in a thread to avoid blocking the event loop.
-    Returns HTTP 400 if yfinance returns no data for the given symbol/range.
+    Returns HTTP 400 if the data provider returns no data for the symbol/range.
     """
     try:
         result = await asyncio.to_thread(run_backtest, req)

@@ -2,7 +2,6 @@
  * EquityChart.jsx
  * Recharts area chart for showing the bot's equity curve over time.
  */
-import React from 'react'
 import {
   ResponsiveContainer,
   AreaChart,

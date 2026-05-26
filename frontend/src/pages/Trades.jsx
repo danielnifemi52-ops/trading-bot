@@ -2,7 +2,7 @@
  * Trades.jsx
  * View completed trades database history, check stats, and filter results.
  */
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { getTrades, getTradeStats, deleteTrade } from '../api/client'
 import StatCard from '../components/StatCard'
 
@@ -16,7 +16,7 @@ export default function Trades() {
   const [symbolFilter, setSymbolFilter] = useState('')
   const [sideFilter, setSideFilter] = useState('ALL')
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -30,11 +30,11 @@ export default function Trades() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [symbolFilter])
 
   useEffect(() => {
-    fetchData()
-  }, [symbolFilter]) // Re-run when symbol filter changes
+    queueMicrotask(fetchData)
+  }, [fetchData])
 
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this trade record?')) return

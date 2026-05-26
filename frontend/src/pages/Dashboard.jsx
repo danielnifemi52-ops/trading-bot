@@ -3,7 +3,7 @@
  * The main bot control room. Shows live tickers, RSI gauge,
  * start/stop parameters, and recent tick history.
  */
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useBot } from '../hooks/useBot'
 import { getBotLogs } from '../api/client'
 import StatCard from '../components/StatCard'
@@ -17,7 +17,7 @@ export default function Dashboard() {
   const [logsLoading, setLogsLoading] = useState(false)
 
   // Fetch logs on mount and whenever the bot status changes (e.g. started/stopped)
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async () => {
     try {
       setLogsLoading(true)
       const { data } = await getBotLogs(10)
@@ -27,30 +27,31 @@ export default function Dashboard() {
     } finally {
       setLogsLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    fetchLogs()
-  }, [status?.running])
+    queueMicrotask(fetchLogs)
+  }, [fetchLogs, status?.running])
 
   // Refresh logs when new live tick data is received via WS
   useEffect(() => {
     if (liveData) {
-      // Append the new tick to the local logs list, maintaining at most 10 items
-      setLogs((prevLogs) => {
-        const newLog = {
-          id: Date.now(), // temporary local id
-          symbol: status?.symbol || 'Bot',
-          price: liveData.price,
-          rsi: liveData.rsi,
-          signal: liveData.signal,
-          account_value: liveData.account,
-          timestamp: new Date().toISOString(),
-        }
-        return [newLog, ...prevLogs.slice(0, 9)]
+      queueMicrotask(() => {
+        setLogs((prevLogs) => {
+          const newLog = {
+            id: Date.now(), // temporary local id
+            symbol: status?.symbol || 'Bot',
+            price: liveData.price,
+            rsi: liveData.rsi,
+            signal: liveData.signal,
+            account_value: liveData.account,
+            timestamp: new Date().toISOString(),
+          }
+          return [newLog, ...prevLogs.slice(0, 9)]
+        })
       })
     }
-  }, [liveData])
+  }, [liveData, status?.symbol])
 
   // Get current active values (prefer WebSocket live data, fall back to last status value)
   const price   = liveData?.price   ?? status?.last_price   ?? null
@@ -88,6 +89,24 @@ export default function Dashboard() {
           fontWeight: '500',
         }}>
           Error: {error}
+        </div>
+      )}
+
+      {status?.symbol?.includes('/') && (
+        <div style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          background: '#1c1208',
+          border: '1px solid #f59e0b',
+          borderRadius: 999,
+          padding: '3px 10px',
+          fontSize: 11,
+          color: '#f59e0b',
+          marginBottom: 12,
+          alignSelf: 'flex-start',
+        }}>
+          {'\u20bf CRYPTO MODE - 24/7 trading active \u00b7 No PDT restrictions'}
         </div>
       )}
 

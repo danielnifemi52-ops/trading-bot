@@ -42,7 +42,7 @@ class SyncAlerter:
         signal: str,
         price: float,
         rsi: float,
-        qty: int,
+        qty: float,
         stop: float,
         take_profit: float,
     ) -> None:

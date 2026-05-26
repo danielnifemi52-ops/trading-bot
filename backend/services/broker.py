@@ -1,23 +1,38 @@
 """
 broker.py
 Thin wrapper around Alpaca TradingClient.
+Supports stock symbols such as AAPL and crypto symbols such as BTC/USD.
 All broker interactions go through this class.
 Never call alpaca-py directly from routers or the bot runner.
 """
 from __future__ import annotations
-import os
+
 import logging
+import os
 
 log = logging.getLogger(__name__)
 
 try:
     from alpaca.trading.client import TradingClient
-    from alpaca.trading.requests import MarketOrderRequest
     from alpaca.trading.enums import OrderSide, TimeInForce
+    from alpaca.trading.requests import MarketOrderRequest
+
     ALPACA_AVAILABLE = True
 except ImportError:
     ALPACA_AVAILABLE = False
-    log.warning("alpaca-py not installed — broker running in dry-run mode only")
+    log.warning("alpaca-py not installed - broker running in dry-run mode only")
+
+try:
+    from alpaca.data.historical.crypto import CryptoHistoricalDataClient
+
+    CRYPTO_DATA_AVAILABLE = True
+except ImportError:
+    CRYPTO_DATA_AVAILABLE = False
+
+
+def is_crypto(symbol: str) -> bool:
+    """Return True for Alpaca crypto pair symbols such as BTC/USD."""
+    return "/" in (symbol or "")
 
 
 class Broker:
@@ -30,13 +45,21 @@ class Broker:
         """Initialise the broker client, or enter dry-run mode."""
         self.dry_run = dry_run
         self.client = None
+        self.crypto_data_client = None
+
         if not dry_run and ALPACA_AVAILABLE:
             self.client = TradingClient(
                 api_key=os.environ["ALPACA_KEY"],
                 secret_key=os.environ["ALPACA_SECRET"],
                 paper=paper,
             )
-            log.info(f"Broker initialised — paper={paper}")
+            log.info(f"Broker initialised - paper={paper}")
+
+        if not dry_run and CRYPTO_DATA_AVAILABLE:
+            self.crypto_data_client = CryptoHistoricalDataClient(
+                api_key=os.environ["ALPACA_KEY"],
+                secret_key=os.environ["ALPACA_SECRET"],
+            )
 
     def get_account_value(self) -> float:
         """Return current portfolio value. Returns 10_000 in dry-run."""
@@ -53,27 +76,42 @@ class Broker:
         if self.dry_run or not self.client:
             return False
         try:
-            pos = self.client.get_open_position(symbol)
+            clean = symbol.replace("/", "")
+            pos = self.client.get_open_position(clean)
             return pos is not None
         except Exception:
             return False
 
-    def place_market_order(self, symbol: str, qty: int, side: str) -> bool:
-        """Place a market order. Returns True on success."""
+    def place_market_order(self, symbol: str, qty: float, side: str) -> bool:
+        """
+        Place a market order.
+        Crypto quantities are fractional base-currency units.
+        Stock quantities are whole shares.
+        """
         if self.dry_run:
-            log.info(f"[DRY RUN] {side} {qty}x {symbol}")
+            log.info(f"[DRY RUN] {side} {qty} {symbol}")
             return True
         if not self.client:
-            log.warning("Alpaca not configured — order skipped")
+            log.warning("Alpaca not configured - order skipped")
             return False
         try:
-            self.client.submit_order(MarketOrderRequest(
-                symbol=symbol,
-                qty=qty,
-                side=OrderSide.BUY if side == "BUY" else OrderSide.SELL,
-                time_in_force=TimeInForce.DAY,
-            ))
-            log.info(f"Order placed: {side} {qty}x {symbol}")
+            side_enum = OrderSide.BUY if side == "BUY" else OrderSide.SELL
+            if is_crypto(symbol):
+                order = MarketOrderRequest(
+                    symbol=symbol,
+                    qty=round(float(qty), 6),
+                    side=side_enum,
+                    time_in_force=TimeInForce.GTC,
+                )
+            else:
+                order = MarketOrderRequest(
+                    symbol=symbol,
+                    qty=int(qty),
+                    side=side_enum,
+                    time_in_force=TimeInForce.DAY,
+                )
+            self.client.submit_order(order)
+            log.info(f"Order placed: {side} {qty} {symbol}")
             return True
         except Exception as e:
             log.error(f"Order failed: {e}")
@@ -87,9 +125,26 @@ class Broker:
         if not self.client:
             return False
         try:
-            self.client.close_position(symbol)
+            clean = symbol.replace("/", "")
+            self.client.close_position(clean)
             log.info(f"Position closed: {symbol}")
             return True
         except Exception as e:
             log.error(f"close_position failed: {e}")
             return False
+
+    def get_crypto_price(self, symbol: str) -> float:
+        """Return the latest Alpaca crypto close price for a pair symbol."""
+        if not self.crypto_data_client:
+            return 0.0
+        try:
+            from alpaca.data.requests import CryptoLatestBarRequest
+
+            req = CryptoLatestBarRequest(symbol_or_symbols=symbol)
+            latest = self.crypto_data_client.get_crypto_latest_bar(req)
+            if isinstance(latest, dict):
+                return float(latest[symbol].close)
+            return float(latest.close)
+        except Exception as e:
+            log.error(f"get_crypto_price failed: {e}")
+            return 0.0

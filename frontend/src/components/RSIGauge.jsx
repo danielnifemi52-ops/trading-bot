@@ -2,8 +2,6 @@
  * RSIGauge.jsx
  * SVG arc gauge for RSI values.
  */
-import React from 'react';
-
 const RSIGauge = ({ value }) => {
   // Handle null/undefined values gracefully
   if (value === null || value === undefined || isNaN(value)) {
@@ -19,7 +17,7 @@ const RSIGauge = ({ value }) => {
             </text>
           </svg>
         </div>
-        <style jsx>{`
+        <style>{`
           .rsi-gauge {
             display: flex;
             flex-direction: column;
@@ -53,14 +51,7 @@ const RSIGauge = ({ value }) => {
     return '#94a3b8'; // Gray for neutral
   };
 
-  // Calculate position on the gauge
-  const calculatePosition = (rsi) => {
-    // Map RSI (0-100) to angle (0-180 degrees)
-    return (rsi / 100) * 180;
-  };
-
   const rsiColor = getColor(value);
-  const rsiPosition = calculatePosition(value);
 
   return (
     <div className="rsi-gauge">
@@ -93,7 +84,7 @@ const RSIGauge = ({ value }) => {
           </text>
         </svg>
       </div>
-      <style jsx>{`
+      <style>{`
         .rsi-gauge {
           display: flex;
           flex-direction: column;

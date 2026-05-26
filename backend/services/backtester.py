@@ -1,8 +1,8 @@
 """
 backtester.py
-Walk-forward backtester. Downloads historical OHLCV data via yfinance,
-simulates the RSI strategy trade by trade, and returns a BacktestResponse.
-Uses Alpaca for intraday bars and yfinance for daily or longer bars.
+Walk-forward backtester. Downloads historical OHLCV data, simulates the RSI
+strategy trade by trade, and returns a BacktestResponse.
+Uses Alpaca for crypto and stock intraday bars; yfinance for daily/weekly stocks.
 No database access.
 """
 from __future__ import annotations
@@ -18,8 +18,16 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
-from core.strategy import BotConfig, calc_rsi, get_signal, stop_price, take_profit_price
+from core.strategy import (
+    BotConfig,
+    calc_rsi,
+    get_signal,
+    position_size,
+    stop_price,
+    take_profit_price,
+)
 from models import BacktestRequest, BacktestResponse, TradeStats
+from services.broker import is_crypto
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +67,58 @@ def download_alpaca(symbol: str, start: str, end: str, interval: str) -> pd.Data
     return df
 
 
+def download_crypto_alpaca(
+    symbol: str,
+    start: str,
+    end: str,
+    interval: str,
+) -> pd.DataFrame:
+    """Download crypto OHLCV bars from Alpaca."""
+    api_key = os.environ.get("ALPACA_KEY")
+    secret_key = os.environ.get("ALPACA_SECRET")
+    if not api_key or not secret_key:
+        raise ValueError(
+            "ALPACA_KEY and ALPACA_SECRET must be set for crypto backtests."
+        )
+
+    from alpaca.data.historical.crypto import CryptoHistoricalDataClient
+    from alpaca.data.requests import CryptoBarsRequest
+
+    tf_map = {
+        "1d": TimeFrame.Day,
+        "1h": TimeFrame.Hour,
+        "15m": TimeFrame(15, TimeFrameUnit.Minute),
+        "5m": TimeFrame(5, TimeFrameUnit.Minute),
+    }
+    if hasattr(TimeFrame, "Week"):
+        tf_map["1wk"] = TimeFrame.Week
+
+    if interval not in tf_map:
+        raise ValueError(
+            f"Unsupported interval '{interval}' for crypto. Use one of: "
+            f"{', '.join(sorted(tf_map))}."
+        )
+
+    client = CryptoHistoricalDataClient(
+        api_key=api_key,
+        secret_key=secret_key,
+    )
+    req = CryptoBarsRequest(
+        symbol_or_symbols=symbol,
+        timeframe=tf_map[interval],
+        start=start,
+        end=end,
+    )
+    bars = client.get_crypto_bars(req)
+    df = getattr(bars, "df", pd.DataFrame())
+    if df.empty:
+        return df
+    if isinstance(df.index, pd.MultiIndex):
+        df = df.reset_index(level=0, drop=True)
+    df.columns = [c.capitalize() for c in df.columns]
+    return df
+
+
 def download_with_retry(
     symbol: str,
     start: str,
@@ -67,6 +127,9 @@ def download_with_retry(
     retries: int = 2,
 ) -> pd.DataFrame:
     """Download OHLCV. Uses Alpaca for intraday, yfinance for daily and above."""
+    if is_crypto(symbol):
+        return download_crypto_alpaca(symbol, start, end, interval)
+
     if interval in INTRADAY_INTERVALS:
         return download_alpaca(symbol, start, end, interval)
     if interval not in YFINANCE_INTERVALS:
@@ -149,7 +212,7 @@ def run_backtest(req: BacktestRequest) -> BacktestResponse:
     """
     df = download_with_retry(req.symbol, req.start, req.end, req.interval)
     if df.empty:
-        provider = "Alpaca" if req.interval in INTRADAY_INTERVALS else "yfinance"
+        provider = "Alpaca" if is_crypto(req.symbol) or req.interval in INTRADAY_INTERVALS else "yfinance"
         raise ValueError(
             f"No data returned from {provider} for {req.symbol} between "
             f"{req.start} and {req.end}. "
@@ -157,6 +220,7 @@ def run_backtest(req: BacktestRequest) -> BacktestResponse:
         )
 
     prices: pd.Series = df["Close"].squeeze().dropna()
+    crypto = is_crypto(req.symbol)
 
     cfg = BotConfig(
         symbol=req.symbol,
@@ -211,9 +275,7 @@ def run_backtest(req: BacktestRequest) -> BacktestResponse:
 
         # Open new position on BUY signal
         if signal == "BUY" and position is None and prev_signal != "BUY":
-            risk_dollars = capital * (cfg.risk_per_trade_pct / 100)
-            per_share_risk = price * (cfg.stop_loss_pct / 100)
-            qty = int(risk_dollars / per_share_risk) if per_share_risk > 0 else 0
+            qty = position_size(capital, price, cfg, crypto=crypto)
             if qty > 0:
                 position = {"entry": price, "qty": qty, "date": date_str, "rsi": round(rsi, 2)}
 

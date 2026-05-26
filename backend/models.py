@@ -17,7 +17,7 @@ class Trade(SQLModel, table=True):
     symbol: str
     side: str                         # "BUY" or "SELL"
     price: float
-    qty: int
+    qty: float
     rsi_at_signal: float
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     pnl: Optional[float] = None

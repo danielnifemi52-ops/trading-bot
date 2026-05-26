@@ -32,7 +32,7 @@ class TradeRecord:
     symbol: str
     side: Literal["BUY", "SELL"]
     price: float
-    qty: int
+    qty: float
     rsi_at_signal: float
     timestamp: datetime = field(default_factory=datetime.utcnow)
     pnl: Optional[float] = None
@@ -85,14 +85,22 @@ def take_profit_price(entry: float, cfg: BotConfig) -> float:
     return round(entry * (1 + cfg.take_profit_pct / 100), 4)
 
 
-def position_size(account_value: float, entry: float, cfg: BotConfig) -> int:
+def position_size(
+    account_value: float,
+    entry: float,
+    cfg: BotConfig,
+    crypto: bool = False,
+) -> int | float:
     """
     Risk-based position sizing.
     Never risks more than cfg.risk_per_trade_pct% of account on a single trade.
-    Returns 0 if calculation produces invalid result.
+    Returns fractional units for crypto and whole shares for stocks.
     """
     risk_dollars = account_value * (cfg.risk_per_trade_pct / 100)
-    per_share_risk = entry * (cfg.stop_loss_pct / 100)
-    if per_share_risk <= 0:
+    per_unit_risk = entry * (cfg.stop_loss_pct / 100)
+    if per_unit_risk <= 0:
         return 0
-    return max(int(risk_dollars / per_share_risk), 0)
+    raw_qty = risk_dollars / per_unit_risk
+    if crypto:
+        return round(raw_qty, 6)
+    return max(int(raw_qty), 0)
