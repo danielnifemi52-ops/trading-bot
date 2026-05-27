@@ -33,6 +33,26 @@ async def lifespan(app: FastAPI):
     """Runs on startup (before yield) and shutdown (after yield)."""
     init_db()
     scheduler.start()
+
+    # Register Telegram webhook on startup
+    render_url = os.getenv("RENDER_URL", "")
+    if render_url and os.getenv("TELEGRAM_TOKEN"):
+        import httpx
+        webhook_url = f"{render_url}/api/telegram/webhook"
+        try:
+            async with httpx.AsyncClient() as client:
+                token = os.getenv("TELEGRAM_TOKEN")
+                r = await client.post(
+                    f"https://api.telegram.org/bot{token}/setWebhook",
+                    json={"url": webhook_url}
+                )
+                if r.status_code == 200:
+                    log.info(f"Telegram webhook set: {webhook_url}")
+                else:
+                    log.warning(f"Telegram webhook failed: {r.text}")
+        except Exception as e:
+            log.warning(f"Could not set Telegram webhook: {e}")
+
     yield
     scheduler.shutdown(wait=False)
     # Clean shutdown: stop any running bot
@@ -86,6 +106,9 @@ API_KEY = os.getenv("API_KEY", "")
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     if request.url.path.startswith("/api"):
+        # Bypass API key check for Telegram webhook
+        if request.url.path == "/api/telegram/webhook":
+            return await call_next(request)
         key = request.headers.get("X-API-Key", "")
         if API_KEY and key != API_KEY:
             return JSONResponse(
@@ -99,6 +122,13 @@ app.include_router(bot.router,       prefix="/api/bot",       tags=["bot"])
 app.include_router(backtest.router,  prefix="/api/backtest",  tags=["backtest"])
 app.include_router(optimizer.router, prefix="/api/optimizer", tags=["optimizer"])
 app.include_router(trades.router,    prefix="/api/trades",    tags=["trades"])
+
+from routers import telegram as telegram_router
+app.include_router(
+    telegram_router.router,
+    prefix="/api/telegram",
+    tags=["telegram"]
+)
 
 
 @app.websocket("/ws/live")

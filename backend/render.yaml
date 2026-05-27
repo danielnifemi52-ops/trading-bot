@@ -19,3 +19,5 @@ services:
         sync: false
       - key: APP_ENV
         value: production
+      - key: RENDER_URL
+        value: https://trading-bot-kzt5.onrender.com

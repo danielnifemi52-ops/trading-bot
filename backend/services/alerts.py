@@ -1,100 +1,194 @@
 """
 alerts.py
 Telegram alert sender. All bot events (signals, trade closes, errors) are
-dispatched here. Uses httpx for synchronous HTTP calls from the bot thread.
+dispatched here. Uses httpx.AsyncClient under the hood with a synchronous
+wrapper for the bot polling thread.
 """
 from __future__ import annotations
 import os
+import asyncio
 import logging
+import json
+from datetime import datetime
+from typing import Optional
 import httpx
 
 log = logging.getLogger(__name__)
+TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
 
-TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
+
+class TelegramAlerter:
+    def __init__(self, token=None, chat_id=None):
+        self.token   = token   or os.getenv("TELEGRAM_TOKEN", "")
+        self.chat_id = chat_id or os.getenv("TELEGRAM_CHAT_ID", "")
+        self._client = httpx.AsyncClient(timeout=10)
+
+    async def send(self, text: str, reply_markup=None) -> dict:
+        """Send message. Returns response JSON including message_id."""
+        if not self.token or not self.chat_id:
+            log.info(f"[ALERT] {text}")
+            return {}
+        url  = TELEGRAM_API.format(token=self.token, method="sendMessage")
+        data = {
+            "chat_id":    self.chat_id,
+            "text":       text,
+            "parse_mode": "Markdown",
+        }
+        if reply_markup:
+            data["reply_markup"] = json.dumps(reply_markup)
+        try:
+            r = await self._client.post(url, json=data)
+            r.raise_for_status()
+            return r.json()
+        except Exception as e:
+            log.error(f"Telegram send failed: {e}")
+            return {}
+
+    async def edit_message(
+        self, message_id: int, text: str
+    ) -> bool:
+        """Edit an existing message (used after trade confirmed)."""
+        if not self.token or not self.chat_id:
+            log.info(f"[ALERT EDIT] {text}")
+            return False
+        url  = TELEGRAM_API.format(
+            token=self.token, method="editMessageText"
+        )
+        data = {
+            "chat_id":    self.chat_id,
+            "message_id": message_id,
+            "text":       text,
+            "parse_mode": "Markdown",
+        }
+        try:
+            r = await self._client.post(url, json=data)
+            return r.status_code == 200
+        except Exception:
+            return False
+
+    async def answer_callback(
+        self, callback_query_id: str, text: str = ""
+    ) -> bool:
+        """Dismiss the loading spinner on button tap."""
+        if not self.token:
+            return False
+        url  = TELEGRAM_API.format(
+            token=self.token, method="answerCallbackQuery"
+        )
+        try:
+            r = await self._client.post(url, json={
+                "callback_query_id": callback_query_id,
+                "text": text,
+            })
+            return r.status_code == 200
+        except Exception:
+            return False
+
+    async def signal_alert(
+        self, symbol, signal, price, rsi,
+        qty, stop, take_profit
+    ):
+        """Send signal alert WITH confirm/skip buttons."""
+        emoji = "🟢" if signal == "BUY" else "🔴"
+        text = (
+            f"{emoji} *{signal} SIGNAL — {symbol}*\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"💵 Price      : `${price:.2f}`\n"
+            f"📊 RSI        : `{rsi:.1f}`\n"
+            f"🧮 Qty        : `{qty}`\n"
+            f"🛑 Stop loss  : `${stop:.2f}`\n"
+            f"🎯 Take profit: `${take_profit:.2f}`\n"
+            f"🕐 Time       : `{datetime.utcnow().strftime('%H:%M UTC')}`\n\n"
+            f"_Tap a button to act on this signal:_"
+        )
+        # Inline keyboard with confirm and skip buttons
+        # callback_data format: "action|symbol|price|qty"
+        reply_markup = {
+            "inline_keyboard": [[
+                {
+                    "text": f"✅ Confirm {signal}",
+                    "callback_data": f"{signal}|{symbol}|{price}|{qty}"
+                },
+                {
+                    "text": "❌ Skip",
+                    "callback_data": f"SKIP|{symbol}|{price}|{qty}"
+                }
+            ]]
+        }
+        response = await self.send(text, reply_markup=reply_markup)
+        return response.get("result", {}).get("message_id")
+
+    async def trade_closed_alert(
+        self, symbol, side, entry,
+        exit_price, pnl, exit_reason, account_value
+    ):
+        emoji = "✅" if pnl >= 0 else "❌"
+        text = (
+            f"{emoji} *TRADE CLOSED — {symbol}*\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"↗ Entry      : `${entry:.2f}`\n"
+            f"↘ Exit       : `${exit_price:.2f}`\n"
+            f"💰 P&L        : `${pnl:+.2f}`\n"
+            f"📋 Reason     : `{exit_reason}`\n"
+            f"🏦 Account    : `${account_value:,.2f}`"
+        )
+        await self.send(text)
+
+    async def error_alert(self, error_msg: str):
+        await self.send(
+            f"⚠️ *BOT ERROR*\n`{error_msg}`\n"
+            f"`{datetime.utcnow().strftime('%H:%M UTC')}`"
+        )
+
+    async def heartbeat(
+        self, symbol, rsi, price, account
+    ):
+        await self.send(
+            f"💓 *Heartbeat — {symbol}*\n"
+            f"Price: `${price:.2f}` | "
+            f"RSI: `{rsi:.1f}` | "
+            f"Acct: `${account:,.2f}`"
+        )
+
+    async def close(self):
+        await self._client.aclose()
 
 
 class SyncAlerter:
-    """Sends Telegram messages synchronously. Safe to call from any thread."""
+    def __init__(self, **kwargs):
+        self._async = TelegramAlerter(**kwargs)
 
-    def __init__(self) -> None:
-        """Initialise with credentials from environment."""
-        self.token = os.getenv("TELEGRAM_TOKEN", "")
-        self.chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
-        self.enabled = bool(self.token and self.chat_id)
-        if not self.enabled:
-            log.warning("Telegram credentials not set — alerts disabled")
-
-    def _send(self, text: str) -> None:
-        """Send a raw message. Silently swallows errors to avoid crashing the bot."""
-        if not self.enabled:
-            log.info(f"[ALERT] {text}")
-            return
+    def _run(self, coro):
         try:
-            url = TELEGRAM_API.format(token=self.token)
-            httpx.post(url, json={"chat_id": self.chat_id, "text": text,
-                                  "parse_mode": "HTML"}, timeout=10)
-        except Exception as e:
-            log.error(f"Telegram alert failed: {e}")
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    future = pool.submit(asyncio.run, coro)
+                    return future.result()
+            return loop.run_until_complete(coro)
+        except RuntimeError:
+            return asyncio.run(coro)
 
-    def send(self, text: str) -> None:
-        """Public method to send custom raw alert text."""
-        # Simple markdown bold (*) to HTML (<b>) conversion
-        if "*" in text:
-            import re
-            text = re.sub(r'\*(.*?)\*', r'<b>\1</b>', text)
-        self._send(text)
+    def send(self, text, reply_markup=None):
+        return self._run(self._async.send(text, reply_markup))
 
-    def signal_alert(
-        self,
-        symbol: str,
-        signal: str,
-        price: float,
-        rsi: float,
-        qty: float,
-        stop: float,
-        take_profit: float,
-    ) -> None:
-        """Alert on a new BUY or SELL signal."""
-        emoji = "🟢" if signal == "BUY" else "🔴"
-        msg = (
-            f"{emoji} <b>{signal} {symbol}</b>\n"
-            f"Price: ${price:.2f} | RSI: {rsi:.1f}\n"
-            f"Qty: {qty} | Stop: ${stop:.2f} | TP: ${take_profit:.2f}"
+    def signal_alert(self, **kwargs):
+        return self._run(self._async.signal_alert(**kwargs))
+
+    def trade_closed_alert(self, **kwargs):
+        return self._run(self._async.trade_closed_alert(**kwargs))
+
+    def error_alert(self, error_msg):
+        return self._run(self._async.error_alert(error_msg))
+
+    def heartbeat(self, **kwargs):
+        return self._run(self._async.heartbeat(**kwargs))
+
+    def edit_message(self, message_id, text):
+        return self._run(self._async.edit_message(message_id, text))
+
+    def answer_callback(self, callback_query_id, text=""):
+        return self._run(
+            self._async.answer_callback(callback_query_id, text)
         )
-        log.info(msg)
-        self._send(msg)
-
-    def trade_closed_alert(
-        self,
-        symbol: str,
-        side: str,
-        entry: float,
-        exit_price: float,
-        pnl: float,
-        exit_reason: str,
-        account_value: float,
-    ) -> None:
-        """Alert when a trade is closed (RSI signal, stop loss, or take profit)."""
-        emoji = "✅" if pnl >= 0 else "❌"
-        msg = (
-            f"{emoji} <b>CLOSED {symbol}</b> [{exit_reason}]\n"
-            f"Entry: ${entry:.2f} → Exit: ${exit_price:.2f}\n"
-            f"P&L: ${pnl:+.2f} | Account: ${account_value:,.2f}"
-        )
-        log.info(msg)
-        self._send(msg)
-
-    def heartbeat(self, symbol: str, rsi: float, price: float, account: float) -> None:
-        """Hourly status ping."""
-        msg = (
-            f"💓 <b>Heartbeat</b> — {symbol}\n"
-            f"Price: ${price:.2f} | RSI: {rsi:.1f} | Acct: ${account:,.2f}"
-        )
-        log.info(msg)
-        self._send(msg)
-
-    def error_alert(self, error: str) -> None:
-        """Alert on a bot error."""
-        msg = f"⚠️ <b>Bot Error</b>\n{error}"
-        log.error(msg)
-        self._send(msg)
