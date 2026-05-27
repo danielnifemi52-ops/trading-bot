@@ -316,7 +316,6 @@ class BotRunner:
 
             self.last_rsi    = rsi
             self.last_price  = price
-            self.last_signal = signal
 
             log.info(
                 f"{self.cfg.symbol} ${price:.2f} "
@@ -332,6 +331,7 @@ class BotRunner:
                 )
 
             if not market_is_open(self.cfg.symbol):
+                self.last_signal = signal
                 return
 
             self._execute_signal(
