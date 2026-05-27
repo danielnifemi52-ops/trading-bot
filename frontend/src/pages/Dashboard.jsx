@@ -5,7 +5,7 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import { useBot } from '../hooks/useBot'
-import { getBotLogs } from '../api/client'
+import { getBotLogs, manualTrade } from '../api/client'
 import StatCard from '../components/StatCard'
 import RSIGauge from '../components/RSIGauge'
 import BotControls from '../components/BotControls'
@@ -17,6 +17,11 @@ export default function Dashboard() {
   const [logs, setLogs] = useState([])
   const [logsLoading, setLogsLoading] = useState(false)
   const [health, setHealth] = useState(null)  // FIX 6 — memory widget
+
+  const [tradeLoading, setTradeLoading] = useState(null)
+  const [tradeResult, setTradeResult]   = useState(null)
+  const [tradeError, setTradeError]     = useState(null)
+  const [showConfirm, setShowConfirm]   = useState(null)
 
   // ── FIX 6: Poll /health every 60 s for memory data ────────────────────
   useEffect(() => {
@@ -31,6 +36,35 @@ export default function Dashboard() {
     const id = setInterval(fetchHealth, 60_000)
     return () => clearInterval(id)
   }, [])
+
+  const handleTrade = async (side) => {
+    const symbol = status?.symbol || status?.config?.symbol
+    if (!symbol) {
+      setTradeError("No symbol selected. Start the bot first.")
+      return
+    }
+    setShowConfirm({ side, symbol, price: liveData?.price || status?.last_price })
+  }
+
+  const confirmTrade = async () => {
+    const { side, symbol } = showConfirm
+    setShowConfirm(null)
+    setTradeLoading(side)
+    setTradeError(null)
+    setTradeResult(null)
+    try {
+      const { data } = await manualTrade(symbol, side)
+      setTradeResult(data)
+      setTimeout(() => setTradeResult(null), 5000)
+    } catch (e) {
+      setTradeError(
+        e.response?.data?.detail || e.message
+      )
+      setTimeout(() => setTradeError(null), 8000)
+    } finally {
+      setTradeLoading(null)
+    }
+  }
 
   // Fetch logs on mount and whenever the bot status changes (e.g. started/stopped)
   const fetchLogs = useCallback(async () => {
@@ -282,12 +316,153 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <BotControls
-          status={status}
-          onStart={start}
-          onStop={stop}
-          loading={loading}
-        />
+        <div>
+          <BotControls
+            status={status}
+            onStart={start}
+            onStop={stop}
+            loading={loading}
+          />
+          {/* MANUAL TRADING PANEL */}
+          <div style={{
+            background: "var(--surface, #1a1d27)",
+            border: "1px solid var(--border, #2a2d3a)",
+            borderRadius: 8,
+            padding: 20,
+            marginTop: 16,
+            textAlign: "left",
+          }}>
+            <p style={{
+              fontSize: 11, color: "#64748b",
+              letterSpacing: "0.08em",
+              marginBottom: 16, margin: "0 0 16px"
+            }}>
+              MANUAL TRADING
+            </p>
+
+            {/* Current price display */}
+            <div style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginBottom: 16,
+              padding: "10px 14px",
+              background: "#0f1117",
+              borderRadius: 6,
+              border: "1px solid #2a2d3a",
+            }}>
+              <span style={{ fontSize: 12, color: "#64748b" }}>
+                {status?.symbol || "—"}
+              </span>
+              <span style={{ fontSize: 16, fontWeight: 600, color: "#e2e8f0" }}>
+                ${(liveData?.price || status?.last_price || 0).toLocaleString("en-US", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </span>
+              <span style={{
+                fontSize: 11,
+                color: (liveData?.rsi || status?.last_rsi) < 30 ? "#10b981" :
+                       (liveData?.rsi || status?.last_rsi) > 70 ? "#ef4444" : "#64748b",
+              }}>
+                RSI {(liveData?.rsi || status?.last_rsi || 0).toFixed(1)}
+              </span>
+            </div>
+
+            {/* Buy and Sell buttons */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button
+                onClick={() => handleTrade("BUY")}
+                disabled={tradeLoading !== null || !status?.running}
+                style={{
+                  padding: "14px",
+                  background: tradeLoading === "BUY" ? "#0a2d1a" : "#0f2d1a",
+                  border: "1px solid #10b981",
+                  borderRadius: 6,
+                  color: "#10b981",
+                  fontSize: 15,
+                  fontWeight: 500,
+                  cursor: (tradeLoading || !status?.running) ? "not-allowed" : "pointer",
+                  opacity: (!status?.running || tradeLoading) ? 0.5 : 1,
+                  fontFamily: "inherit",
+                  transition: "all 0.15s",
+                }}
+              >
+                {tradeLoading === "BUY" ? "Placing..." : "▲ Buy Now"}
+              </button>
+
+              <button
+                onClick={() => handleTrade("SELL")}
+                disabled={tradeLoading !== null || !status?.running}
+                style={{
+                  padding: "14px",
+                  background: tradeLoading === "SELL" ? "#2d0a0a" : "#2d0f0f",
+                  border: "1px solid #ef4444",
+                  borderRadius: 6,
+                  color: "#ef4444",
+                  fontSize: 15,
+                  fontWeight: 500,
+                  cursor: (tradeLoading || !status?.running) ? "not-allowed" : "pointer",
+                  opacity: (!status?.running || tradeLoading) ? 0.5 : 1,
+                  fontFamily: "inherit",
+                  transition: "all 0.15s",
+                }}
+              >
+                {tradeLoading === "SELL" ? "Placing..." : "▼ Sell Now"}
+              </button>
+            </div>
+
+            {/* Not running warning */}
+            {!status?.running && (
+              <p style={{
+                fontSize: 11, color: "#475569",
+                textAlign: "center", marginTop: 10, margin: "10px 0 0"
+              }}>
+                Start the bot to enable manual trading
+              </p>
+            )}
+
+            {/* Success message */}
+            {tradeResult && (
+              <div style={{
+                marginTop: 12,
+                padding: "10px 14px",
+                background: "#0a2d1a",
+                border: "1px solid #10b981",
+                borderRadius: 6,
+                fontSize: 12,
+                color: "#10b981",
+              }}>
+                ✅ {tradeResult.action} order placed — {tradeResult.qty} {tradeResult.symbol} at ${tradeResult.price?.toFixed(2)}
+                {tradeResult.dry_run && " [DRY RUN]"}
+              </div>
+            )}
+
+            {/* Error message */}
+            {tradeError && (
+              <div style={{
+                marginTop: 12,
+                padding: "10px 14px",
+                background: "#2d0a0a",
+                border: "1px solid #ef4444",
+                borderRadius: 6,
+                fontSize: 12,
+                color: "#fca5a5",
+              }}>
+                ✕ {tradeError}
+              </div>
+            )}
+
+            {/* Dry run notice */}
+            {status?.config?.dry_run && (
+              <p style={{
+                fontSize: 10, color: "#475569",
+                textAlign: "center", marginTop: 10, margin: "10px 0 0"
+              }}>
+                ⚠ Dry Run Mode — no real orders placed
+              </p>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Bottom row: Tick Logs Table */}
@@ -433,6 +608,83 @@ export default function Dashboard() {
           </div>
           <div style={{ marginTop: 4, fontSize: 9, color: '#334155' }}>
             {health.memory_pct}% · RAM
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation modal */}
+      {showConfirm && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(0,0,0,0.7)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000,
+        }}>
+          <div style={{
+            background: "#1a1d27",
+            border: "1px solid #2a2d3a",
+            borderRadius: 12,
+            padding: 28,
+            width: 320,
+            textAlign: "center",
+          }}>
+            <p style={{
+              fontSize: 20,
+              fontWeight: 600,
+              color: showConfirm.side === "BUY" ? "#10b981" : "#ef4444",
+              marginBottom: 8,
+              marginTop: 0,
+            }}>
+              Confirm {showConfirm.side}
+            </p>
+            <p style={{ fontSize: 14, color: "#94a3b8", marginBottom: 4 }}>
+              {showConfirm.symbol}
+            </p>
+            <p style={{ fontSize: 24, fontWeight: 600, color: "#e2e8f0", marginBottom: 20 }}>
+              ${showConfirm.price?.toFixed(2) || "—"}
+            </p>
+            <p style={{ fontSize: 12, color: "#475569", marginBottom: 20 }}>
+              {status?.config?.dry_run
+                ? "This is a DRY RUN — no real money"
+                : "This will place a REAL market order"
+              }
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button
+                onClick={() => setShowConfirm(null)}
+                style={{
+                  padding: "10px",
+                  background: "transparent",
+                  border: "1px solid #2a2d3a",
+                  borderRadius: 6,
+                  color: "#64748b",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  fontSize: 14,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmTrade}
+                style={{
+                  padding: "10px",
+                  background: showConfirm.side === "BUY" ? "#0f2d1a" : "#2d0f0f",
+                  border: `1px solid ${showConfirm.side === "BUY" ? "#10b981" : "#ef4444"}`,
+                  borderRadius: 6,
+                  color: showConfirm.side === "BUY" ? "#10b981" : "#ef4444",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  fontSize: 14,
+                  fontWeight: 500,
+                }}
+              >
+                Confirm {showConfirm.side}
+              </button>
+            </div>
           </div>
         </div>
       )}

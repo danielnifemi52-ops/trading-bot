@@ -139,3 +139,115 @@ def get_logs(limit: int = 100, session: Session = Depends(get_session)):
         select(BotLog).order_by(BotLog.id.desc()).limit(limit) # type: ignore[arg-type]
     ).all()
     return list(reversed(rows))
+
+
+import os
+from typing import Optional
+from sqlmodel import SQLModel
+from core.strategy import position_size, stop_price, take_profit_price
+from services.broker import is_crypto
+from db import engine
+
+class ManualTradeRequest(SQLModel):
+    symbol: str
+    side: str          # "BUY" or "SELL"
+    qty: Optional[float] = None   # if None, auto-calculate from risk settings
+
+
+@router.post("/trade")
+async def manual_trade(req: ManualTradeRequest):
+    """
+    Place a manual market order from the dashboard.
+    Used when user clicks Buy Now or Sell Now button.
+    """
+    cfg      = bot_state.config
+    is_paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
+    dry_run  = cfg.dry_run if cfg else True
+    broker   = Broker(paper=is_paper, dry_run=dry_run)
+    alerter  = SyncAlerter()
+
+    try:
+        acct  = broker.get_account_value()
+        price = bot_state.last_price or 0
+
+        if price == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="No price data available. Start the bot first."
+            )
+
+        # Auto-calculate qty if not provided
+        if req.qty is None and cfg:
+            from core.strategy import BotConfig
+            bot_cfg = BotConfig(
+                symbol=req.symbol,
+                stop_loss_pct=cfg.stop_loss_pct,
+                take_profit_pct=cfg.take_profit_pct,
+                risk_per_trade_pct=cfg.risk_per_trade_pct,
+            )
+            qty = position_size(
+                acct, price, bot_cfg,
+                crypto=is_crypto(req.symbol)
+            )
+        else:
+            qty = req.qty or 0.001
+
+        if req.side == "BUY":
+            has_pos = broker.has_position(req.symbol)
+            if has_pos:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Already have an open position in {req.symbol}"
+                )
+            ok = broker.place_market_order(req.symbol, qty, "BUY")
+            if ok:
+                sl = stop_price(price, bot_cfg) if cfg else price * 0.95
+                tp = take_profit_price(price, bot_cfg) if cfg else price * 1.1
+                with Session(engine) as session:
+                    session.add(Trade(
+                        symbol=req.symbol, side="BUY",
+                        price=price, qty=qty,
+                        rsi_at_signal=bot_state.last_rsi or 0.0,
+                        timestamp=datetime.utcnow(),
+                    ))
+                    session.commit()
+                alerter.signal_alert(
+                    symbol=req.symbol, signal="BUY",
+                    price=price, rsi=bot_state.last_rsi or 0.0,
+                    qty=qty, stop=sl, take_profit=tp
+                )
+                return {
+                    "ok": True,
+                    "action": "BUY",
+                    "symbol": req.symbol,
+                    "price": price,
+                    "qty": qty,
+                    "dry_run": dry_run,
+                }
+
+        elif req.side == "SELL":
+            ok = broker.close_position(req.symbol)
+            if ok:
+                with Session(engine) as session:
+                    session.add(Trade(
+                        symbol=req.symbol, side="SELL",
+                        price=price, qty=qty,
+                        rsi_at_signal=bot_state.last_rsi or 0.0,
+                        timestamp=datetime.utcnow(),
+                    ))
+                    session.commit()
+                return {
+                    "ok": True,
+                    "action": "SELL",
+                    "symbol": req.symbol,
+                    "price": price,
+                    "dry_run": dry_run,
+                }
+
+        raise HTTPException(status_code=500, detail="Order failed")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"Manual trade error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

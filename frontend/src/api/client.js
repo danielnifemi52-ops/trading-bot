@@ -21,6 +21,8 @@ export const getStatus   = ()        => api.get('/api/bot/status')
 export const startBot    = (config)  => api.post('/api/bot/start', config)
 export const stopBot     = ()        => api.post('/api/bot/stop')
 export const getBotLogs  = (limit)   => api.get(`/api/bot/logs?limit=${limit ?? 100}`)
+export const manualTrade = (symbol, side, qty = null) =>
+  api.post('/api/bot/trade', { symbol, side, qty })
 
 // -- Backtest -----------------------------------------------------------------
 
