@@ -381,15 +381,15 @@ export default function Backtest() {
 
         {error && (
           <div style={{
-            background: 'rgba(239, 68, 68, 0.08)',
-            border: '1px solid var(--red)',
-            color: 'var(--red)',
-            padding: '14px',
-            borderRadius: 'var(--radius)',
-            fontSize: '13px',
-            marginTop: '16px',
+            background: "#1c0f0f",
+            border: "1px solid #ef4444",
+            borderRadius: 8,
+            padding: "12px 16px",
+            marginTop: 12,
+            fontSize: 13,
+            color: "#fca5a5",
           }}>
-            {error}
+            ✕ {error}
           </div>
         )}
       </div>

@@ -12,11 +12,14 @@ import time
 import math
 
 from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data.requests import StockBarsRequest
+from alpaca.data.historical.crypto import CryptoHistoricalDataClient
+from alpaca.data.requests import (
+    StockBarsRequest, 
+    CryptoBarsRequest,
+)
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 import numpy as np
 import pandas as pd
-import yfinance as yf
 
 from core.strategy import (
     BotConfig,
@@ -29,130 +32,92 @@ from core.strategy import (
 from models import BacktestRequest, BacktestResponse, TradeStats
 from services.broker import is_crypto
 
-log = logging.getLogger(__name__)
-
-INTRADAY_INTERVALS = {"1h", "15m", "5m"}
-YFINANCE_INTERVALS = {"1d", "1wk"}
-SUPPORTED_INTERVALS = INTRADAY_INTERVALS | YFINANCE_INTERVALS
-
-
-def download_alpaca(symbol: str, start: str, end: str, interval: str) -> pd.DataFrame:
-    """Download intraday OHLCV bars from Alpaca."""
-    api_key = os.environ.get("ALPACA_KEY")
-    secret_key = os.environ.get("ALPACA_SECRET")
-    if not api_key or not secret_key:
-        raise ValueError(
-            "ALPACA_KEY and ALPACA_SECRET must be set for intraday backtests."
-        )
-
-    client = StockHistoricalDataClient(api_key, secret_key)
-    tf_map = {
-        "1h": TimeFrame.Hour,
+def get_timeframe(interval: str):
+    mapping = {
+        "1m":  TimeFrame(1,  TimeFrameUnit.Minute),
+        "5m":  TimeFrame(5,  TimeFrameUnit.Minute),
         "15m": TimeFrame(15, TimeFrameUnit.Minute),
-        "5m": TimeFrame(5, TimeFrameUnit.Minute),
+        "30m": TimeFrame(30, TimeFrameUnit.Minute),
+        "1h":  TimeFrame(1,  TimeFrameUnit.Hour),
+        "4h":  TimeFrame(4,  TimeFrameUnit.Hour),
+        "1d":  TimeFrame(1,  TimeFrameUnit.Day),
     }
+    return mapping.get(interval, TimeFrame(1, TimeFrameUnit.Day))
+
+
+def download_stock_alpaca(
+    symbol: str, start: str, end: str, interval: str
+) -> pd.DataFrame:
+    """Fetch stock OHLCV data from Alpaca."""
+    client = StockHistoricalDataClient(
+        api_key=os.environ["ALPACA_KEY"],
+        secret_key=os.environ["ALPACA_SECRET"],
+    )
     req = StockBarsRequest(
         symbol_or_symbols=symbol,
-        timeframe=tf_map[interval],
+        timeframe=get_timeframe(interval),
         start=start,
         end=end,
+        adjustment="all",
     )
     bars = client.get_stock_bars(req)
-    df = getattr(bars, "df", pd.DataFrame())
-    if df.empty:
-        return df
+    df = bars.df
     if isinstance(df.index, pd.MultiIndex):
         df = df.reset_index(level=0, drop=True)
     df.columns = [c.capitalize() for c in df.columns]
+    if "Close" not in df.columns and "close" in df.columns:
+        df = df.rename(columns={"close": "Close"})
     return df
 
 
 def download_crypto_alpaca(
-    symbol: str,
-    start: str,
-    end: str,
-    interval: str,
+    symbol: str, start: str, end: str, interval: str
 ) -> pd.DataFrame:
-    """Download crypto OHLCV bars from Alpaca."""
-    api_key = os.environ.get("ALPACA_KEY")
-    secret_key = os.environ.get("ALPACA_SECRET")
-    if not api_key or not secret_key:
-        raise ValueError(
-            "ALPACA_KEY and ALPACA_SECRET must be set for crypto backtests."
-        )
-
-    from alpaca.data.historical.crypto import CryptoHistoricalDataClient
-    from alpaca.data.requests import CryptoBarsRequest
-
-    tf_map = {
-        "1d": TimeFrame.Day,
-        "1h": TimeFrame.Hour,
-        "15m": TimeFrame(15, TimeFrameUnit.Minute),
-        "5m": TimeFrame(5, TimeFrameUnit.Minute),
-    }
-    if hasattr(TimeFrame, "Week"):
-        tf_map["1wk"] = TimeFrame.Week
-
-    if interval not in tf_map:
-        raise ValueError(
-            f"Unsupported interval '{interval}' for crypto. Use one of: "
-            f"{', '.join(sorted(tf_map))}."
-        )
-
+    """Fetch crypto OHLCV data from Alpaca."""
     client = CryptoHistoricalDataClient(
-        api_key=api_key,
-        secret_key=secret_key,
+        api_key=os.environ["ALPACA_KEY"],
+        secret_key=os.environ["ALPACA_SECRET"],
     )
     req = CryptoBarsRequest(
         symbol_or_symbols=symbol,
-        timeframe=tf_map[interval],
+        timeframe=get_timeframe(interval),
         start=start,
         end=end,
     )
     bars = client.get_crypto_bars(req)
-    df = getattr(bars, "df", pd.DataFrame())
-    if df.empty:
-        return df
+    df = bars.df
     if isinstance(df.index, pd.MultiIndex):
         df = df.reset_index(level=0, drop=True)
     df.columns = [c.capitalize() for c in df.columns]
+    if "Close" not in df.columns and "close" in df.columns:
+        df = df.rename(columns={"close": "Close"})
     return df
 
 
-def download_with_retry(
-    symbol: str,
-    start: str,
-    end: str,
-    interval: str,
-    retries: int = 2,
+def download_data(
+    symbol: str, start: str, end: str, interval: str
 ) -> pd.DataFrame:
-    """Download OHLCV. Uses Alpaca for intraday, yfinance for daily and above."""
-    if is_crypto(symbol):
-        return download_crypto_alpaca(symbol, start, end, interval)
-
-    if interval in INTRADAY_INTERVALS:
-        return download_alpaca(symbol, start, end, interval)
-    if interval not in YFINANCE_INTERVALS:
+    """
+    Auto-detect crypto vs stock and use correct Alpaca client.
+    Raises ValueError with clear message if no data returned.
+    """
+    try:
+        if "/" in symbol:
+            df = download_crypto_alpaca(symbol, start, end, interval)
+        else:
+            df = download_stock_alpaca(symbol, start, end, interval)
+    except Exception as e:
         raise ValueError(
-            f"Unsupported interval '{interval}'. Use one of: "
-            f"{', '.join(sorted(SUPPORTED_INTERVALS))}."
+            f"Failed to fetch data for {symbol}: {str(e)}"
         )
 
-    df = pd.DataFrame()
-    for attempt in range(retries):
-        df = yf.download(
-            symbol,
-            start=start,
-            end=end,
-            interval=interval,
-            auto_adjust=True,
-            progress=False,
-        )
-        if not df.empty:
-            return df
-        if attempt < retries - 1:
-            log.warning("yfinance returned empty; retrying in 3s")
-            time.sleep(3)
+    if df is None or df.empty:
+        raise ValueError(
+            f"No data returned for {symbol} between "
+            f"{start} and {end} on {interval} interval. "
+            f"Check the symbol is valid on Alpaca."
+          )
+
     return df
 
 
@@ -210,14 +175,7 @@ def run_backtest(req: BacktestRequest) -> BacktestResponse:
     Returns a BacktestResponse with stats, trade list, and equity curve.
     Raises ValueError if no data is returned by the selected market data provider.
     """
-    df = download_with_retry(req.symbol, req.start, req.end, req.interval)
-    if df.empty:
-        provider = "Alpaca" if is_crypto(req.symbol) or req.interval in INTRADAY_INTERVALS else "yfinance"
-        raise ValueError(
-            f"No data returned from {provider} for {req.symbol} between "
-            f"{req.start} and {req.end}. "
-            "Check the symbol and date range."
-        )
+    df = download_data(req.symbol, req.start, req.end, req.interval)
 
     prices: pd.Series = df["Close"].squeeze().dropna()
     crypto = is_crypto(req.symbol)

@@ -22,9 +22,8 @@ def mock_market_data_downloads():
     dates = pd.date_range(start="2022-01-01", periods=50)
     prices = [100.0 + i for i in range(50)]
     mock_df = pd.DataFrame({"Close": prices}, index=dates)
-    with patch("services.backtester.yf.download", return_value=mock_df) as mock_yf, \
-         patch("services.backtester.download_alpaca", return_value=mock_df) as mock_alpaca:
-        yield {"yf": mock_yf, "alpaca": mock_alpaca}
+    with patch("services.backtester.download_data", return_value=mock_df) as mock_dl:
+        yield {"download_data": mock_dl}
 
 
 
