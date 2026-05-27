@@ -85,7 +85,6 @@ class BotStatusResponse(SQLModel):
     account_value: Optional[float] = None
     open_position: bool = False
     config: Optional[BotConfigRequest] = None
-    stream_active: bool = False
 
 
 class TradeStats(SQLModel):

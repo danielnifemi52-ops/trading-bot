@@ -26,10 +26,6 @@ router = APIRouter()
 @router.get("/status", response_model=BotStatusResponse)
 def get_status():
     """Return the current bot status."""
-    runner = bot_state._runner
-    stream_active = False
-    if runner:
-        stream_active = getattr(runner, '_stream_active', False)
     return BotStatusResponse(
         running=bot_state.is_running,
         symbol=bot_state.config.symbol if bot_state.config else None,
@@ -39,7 +35,6 @@ def get_status():
         account_value=10000.0,
         open_position=bot_state.open_position,
         config=bot_state.config,
-        stream_active=stream_active,
     )
 
 
@@ -64,40 +59,16 @@ async def start_bot(req: BotConfigRequest, session: Session = Depends(get_sessio
     alerter = SyncAlerter()
 
     loop = asyncio.get_event_loop()
+    tick_count = 0
 
-    _BOT_LOG_MAX_ROWS = 500
+    _BOT_LOG_MAX_ROWS = 200
 
-    def on_tick(price: float, rsi: float, signal: str, account: float, source: str = "poll"):
-        """Persist a BotLog row, trim table to last 500 rows, and broadcast."""
-        from db import engine
-        try:
-            with Session(engine) as s:
-                # ── Insert new row ───────────────────────────────────────────
-                row = BotLog(
-                    symbol=req.symbol, price=price, rsi=rsi,
-                    signal=signal, account_value=account,
-                    timestamp=datetime.utcnow(),
-                )
-                s.add(row)
-                s.commit()
+    def on_tick(price: float, rsi: float, signal: str, account: float):
+        """Broadcast every tick; persist to DB only every 10th tick."""
+        nonlocal tick_count
+        tick_count += 1
 
-                # ── FIX 2: Keep only last 500 rows ──────────────────────────
-                count = s.exec(
-                    select(func.count()).select_from(BotLog)
-                ).one()
-                if count > _BOT_LOG_MAX_ROWS:
-                    excess = count - _BOT_LOG_MAX_ROWS
-                    oldest = s.exec(
-                        select(BotLog)
-                        .order_by(BotLog.timestamp.asc())
-                        .limit(excess)
-                    ).all()
-                    for old_row in oldest:
-                        s.delete(old_row)
-                    s.commit()
-        except Exception as e:
-            log.error(f"on_tick DB write failed: {e}")
-
+        # Always broadcast to WebSocket
         data = {
             "price": price,
             "rsi": rsi,
@@ -105,12 +76,44 @@ async def start_bot(req: BotConfigRequest, session: Session = Depends(get_sessio
             "account": account,
             "symbol": cfg.symbol,
             "ts": datetime.utcnow().isoformat(),
-            "source": source,
         }
         try:
             asyncio.run_coroutine_threadsafe(manager.broadcast(data), loop)
         except Exception as e:
             log.error(f"WebSocket broadcast failed: {e}")
+
+        # Only write to DB every 10 ticks
+        if tick_count % 10 != 0:
+            return
+
+        from db import engine
+        try:
+            with Session(engine) as s:
+                s.add(BotLog(
+                    symbol=req.symbol,
+                    price=price,
+                    rsi=rsi,
+                    signal=signal,
+                    account_value=account,
+                    timestamp=datetime.utcnow(),
+                ))
+                s.commit()
+
+                # Keep only last 200 rows
+                count = s.exec(
+                    select(func.count()).select_from(BotLog)
+                ).one()
+                if count > _BOT_LOG_MAX_ROWS:
+                    oldest = s.exec(
+                        select(BotLog)
+                        .order_by(BotLog.timestamp.asc())
+                        .limit(count - _BOT_LOG_MAX_ROWS)
+                    ).all()
+                    for old_row in oldest:
+                        s.delete(old_row)
+                    s.commit()
+        except Exception as e:
+            log.error(f"on_tick DB write failed: {e}")
 
     def on_trade(trade_dict: dict):
         """Persist a Trade row on every executed trade."""

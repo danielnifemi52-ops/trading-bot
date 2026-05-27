@@ -2,26 +2,49 @@ import { useState } from 'react';
 
 const TICKERS = [
   {
-    group: "Crypto",
+    group: "Crypto — Alpaca supported 24/7",
     symbols: [
-      "BTC/USD", "ETH/USD", "SOL/USD", "BNB/USD",
-      "AVAX/USD", "MATIC/USD", "LINK/USD", "DOT/USD",
-      "ADA/USD", "DOGE/USD", "XRP/USD", "LTC/USD",
-    ],
+      "BTC/USD",
+      "ETH/USD", 
+      "SOL/USD",
+      "AVAX/USD",
+      "DOGE/USD",
+      "SHIB/USD",
+      "LTC/USD",
+      "BCH/USD",
+      "LINK/USD",
+      "UNI/USD",
+      "AAVE/USD",
+      "CRV/USD",
+    ]
   },
   {
-    group: "Tech Stocks",
-    symbols: ["AAPL","MSFT","GOOGL","AMZN","META","NVDA","TSLA"],
+    group: "Stocks — NYSE hours only (2:30pm-9pm Lagos)",
+    symbols: [
+      "AAPL", "MSFT", "GOOGL", "AMZN", "META",
+      "NVDA", "TSLA", "AMD",  "NFLX", "V",
+    ]
   },
   {
-    group: "ETFs",
-    symbols: ["SPY","QQQ","IWM","DIA","VTI","ARKK"],
+    group: "ETFs — NYSE hours only",
+    symbols: ["SPY", "QQQ", "IWM", "DIA", "VTI"]
   },
-  {
-    group: "Finance",
-    symbols: ["JPM","BAC","GS","V","MA"],
-  },
-];
+]
+
+const ALPACA_CRYPTO = [
+  "BTC/USD","ETH/USD","SOL/USD","AVAX/USD","DOGE/USD",
+  "SHIB/USD","LTC/USD","BCH/USD","LINK/USD","UNI/USD",
+  "AAVE/USD","CRV/USD",
+]
+
+const ALPACA_STOCKS = [
+  "AAPL","MSFT","GOOGL","AMZN","META","NVDA","TSLA",
+  "AMD","NFLX","V","MA","JPM","BAC","SPY","QQQ",
+  "IWM","DIA","VTI","ARKK","GLD",
+]
+
+const isSupported = (sym) => 
+  ALPACA_CRYPTO.includes(sym) || ALPACA_STOCKS.includes(sym)
 
 const isCrypto = (sym) => sym.includes("/");
 
@@ -48,6 +71,16 @@ export default function TickerSelect({ value, onChange }) {
           outline: "none"
         }}
       />
+      {value && !isSupported(value) && (
+        <p style={{
+          fontSize: 11,
+          color: "#ef4444",
+          marginTop: 4,
+        }}>
+          ✕ {value} is not supported by Alpaca. 
+          Select a symbol from the list above.
+        </p>
+      )}
       {showTickerDropdown && (
         <div style={{
           position: "absolute", top: "100%", left: 0, right: 0, zIndex: 100,
@@ -71,6 +104,11 @@ export default function TickerSelect({ value, onChange }) {
                       key={symbol}
                       type="button"
                       onMouseDown={() => onChange(symbol)}
+                      title={
+                        symbol.includes("/") 
+                          ? "24/7 crypto — always available"
+                          : "NYSE hours only — 2:30pm to 9pm Lagos time"
+                      }
                       style={{
                         padding: "4px 10px", fontSize: 11, borderRadius: 4,
                         background: value === symbol ? "#3b82f6" : "#0f1117",
