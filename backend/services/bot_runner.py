@@ -392,15 +392,15 @@ class BotRunner:
             qty = self.open_trade["qty"] if self.open_trade else 0.0
             pnl = (price - entry) * qty
             
-            # Always alert on SELL signal transition
-            self.alerter.trade_closed_alert(
+            # Always alert on SELL signal transition (sends confirm/skip buttons)
+            self.alerter.signal_alert(
                 symbol=self.cfg.symbol,
-                side="SELL",
-                entry=entry,
-                exit_price=price,
-                pnl=pnl,
-                exit_reason="RSI_SIGNAL",
-                account_value=acct,
+                signal="SELL",
+                price=price,
+                rsi=rsi,
+                qty=qty,
+                stop=0.0,
+                take_profit=0.0,
             )
             
             # Close position only if we currently have one
@@ -416,6 +416,15 @@ class BotRunner:
                             "symbol": self.cfg.symbol,
                         })
                     self.open_trade = None
+                    self.alerter.trade_closed_alert(
+                        symbol=self.cfg.symbol,
+                        side="SELL",
+                        entry=entry,
+                        exit_price=price,
+                        pnl=pnl,
+                        exit_reason="RSI_SIGNAL",
+                        account_value=acct,
+                    )
 
         # Stop loss / take profit checks
         elif has_pos and self.open_trade:

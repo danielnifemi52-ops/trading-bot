@@ -87,6 +87,14 @@ async def handle_callback(callback: dict):
     )
 
     if action == "BUY":
+        if broker.has_position(symbol):
+            alerter.edit_message(
+                message_id,
+                f"ℹ️ *POSITION ALREADY OPEN*\n"
+                f"A position for `{symbol}` is already open (likely filled automatically by the bot)."
+            )
+            return
+
         ok = broker.place_market_order(symbol, qty, "BUY")
         if ok:
             try:
@@ -118,6 +126,14 @@ async def handle_callback(callback: dict):
             )
 
     elif action == "SELL":
+        if not broker.has_position(symbol):
+            alerter.edit_message(
+                message_id,
+                f"ℹ️ *POSITION ALREADY CLOSED*\n"
+                f"The position for `{symbol}` has already been closed (likely by the automated bot runner)."
+            )
+            return
+
         ok = broker.close_position(symbol)
         if ok:
             try:

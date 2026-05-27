@@ -96,8 +96,13 @@ class TelegramAlerter:
             f"💵 Price      : `${price:.2f}`\n"
             f"📊 RSI        : `{rsi:.1f}`\n"
             f"🧮 Qty        : `{qty}`\n"
-            f"🛑 Stop loss  : `${stop:.2f}`\n"
-            f"🎯 Take profit: `${take_profit:.2f}`\n"
+        )
+        if signal == "BUY":
+            text += (
+                f"🛑 Stop loss  : `${stop:.2f}`\n"
+                f"🎯 Take profit: `${take_profit:.2f}`\n"
+            )
+        text += (
             f"🕐 Time       : `{datetime.utcnow().strftime('%H:%M UTC')}`\n\n"
             f"_Tap a button to act on this signal:_"
         )
