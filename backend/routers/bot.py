@@ -251,3 +251,134 @@ async def manual_trade(req: ManualTradeRequest):
     except Exception as e:
         log.error(f"Manual trade error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Data-source diagnostics
+# ---------------------------------------------------------------------------
+import pandas as pd  # noqa: E402  (already a project dep)
+
+
+@router.get("/diagnose/{symbol}")
+async def diagnose_symbol(symbol: str):
+    """
+    Tests all data sources for a symbol and returns results.
+    Use to debug why a symbol is not showing price data.
+    Visit: /api/bot/diagnose/AAPL  or  /api/bot/diagnose/BTC%2FUSD
+    """
+    results: dict = {}
+
+    # ------------------------------------------------------------------
+    # Test 1 — Alpaca stock data
+    # ------------------------------------------------------------------
+    try:
+        from alpaca.data.historical import StockHistoricalDataClient
+        from alpaca.data.requests import StockBarsRequest
+        from alpaca.data.timeframe import TimeFrame
+
+        client = StockHistoricalDataClient(
+            api_key=os.environ["ALPACA_KEY"],
+            secret_key=os.environ["ALPACA_SECRET"],
+        )
+        req_s = StockBarsRequest(
+            symbol_or_symbols=symbol,
+            timeframe=TimeFrame.Hour,
+            limit=5,
+        )
+        bars = client.get_stock_bars(req_s)
+        df = bars.df
+        if not df.empty:
+            results["alpaca_stock"] = {
+                "status": "ok",
+                "bars": len(df),
+                "latest_price": float(df["close"].iloc[-1]),
+                "latest_time": str(df.index[-1]),
+            }
+        else:
+            results["alpaca_stock"] = {
+                "status": "empty",
+                "message": "Alpaca returned no data for this symbol",
+            }
+    except Exception as exc:
+        results["alpaca_stock"] = {"status": "error", "message": str(exc)}
+
+    # ------------------------------------------------------------------
+    # Test 2 — Alpaca crypto data
+    # ------------------------------------------------------------------
+    try:
+        from alpaca.data.historical.crypto import CryptoHistoricalDataClient
+        from alpaca.data.requests import CryptoBarsRequest
+        from alpaca.data.timeframe import TimeFrame as TF2  # noqa: F811
+
+        client2 = CryptoHistoricalDataClient(
+            api_key=os.environ["ALPACA_KEY"],
+            secret_key=os.environ["ALPACA_SECRET"],
+        )
+        req_c = CryptoBarsRequest(
+            symbol_or_symbols=symbol,
+            timeframe=TF2.Hour,
+            limit=5,
+        )
+        bars2 = client2.get_crypto_bars(req_c)
+        df2 = bars2.df
+        if isinstance(df2.index, pd.MultiIndex):
+            df2 = df2.reset_index(level=0, drop=True)
+        if not df2.empty:
+            results["alpaca_crypto"] = {
+                "status": "ok",
+                "bars": len(df2),
+                "latest_price": float(df2["close"].iloc[-1]),
+                "latest_time": str(df2.index[-1]),
+            }
+        else:
+            results["alpaca_crypto"] = {
+                "status": "empty",
+                "message": "No crypto data returned",
+            }
+    except Exception as exc:
+        results["alpaca_crypto"] = {"status": "error", "message": str(exc)}
+
+    # ------------------------------------------------------------------
+    # Test 3 — yfinance
+    # ------------------------------------------------------------------
+    try:
+        import yfinance as yf
+
+        df3 = yf.download(
+            symbol, period="5d", interval="1h",
+            auto_adjust=True, progress=False,
+        )
+        if not df3.empty:
+            results["yfinance"] = {
+                "status": "ok",
+                "bars": len(df3),
+                "latest_price": float(df3["Close"].iloc[-1]),
+                "latest_time": str(df3.index[-1]),
+            }
+        else:
+            results["yfinance"] = {
+                "status": "empty",
+                "message": "yfinance returned no data",
+            }
+    except Exception as exc:
+        results["yfinance"] = {"status": "error", "message": str(exc)}
+
+    return {
+        "symbol": symbol,
+        "results": results,
+        "recommendation": _get_recommendation(results),
+    }
+
+
+def _get_recommendation(results: dict) -> str:
+    alpaca_stock  = results.get("alpaca_stock",  {})
+    alpaca_crypto = results.get("alpaca_crypto", {})
+    yfinance      = results.get("yfinance",      {})
+
+    if alpaca_crypto.get("status") == "ok":
+        return "Use Alpaca crypto data — working correctly"
+    if alpaca_stock.get("status") == "ok":
+        return "Use Alpaca stock data — working correctly"
+    if yfinance.get("status") == "ok":
+        return "Use yfinance fallback — Alpaca not available for this symbol"
+    return "No data source working — check API keys and symbol name"
