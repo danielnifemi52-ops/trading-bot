@@ -7,6 +7,21 @@ import { useState, useEffect } from 'react'
 import TickerSelect from './TickerSelect'
 import RSIPeriodSelect from './RSIPeriodSelect'
 
+const TIMEFRAMES = [
+  { value: "1m",  label: "1m",  desc: "1 minute" },
+  { value: "5m",  label: "5m",  desc: "5 minutes" },
+  { value: "15m", label: "15m", desc: "15 minutes" },
+  { value: "30m", label: "30m", desc: "30 minutes" },
+  { value: "1h",  label: "1H",  desc: "1 hour" },
+  { value: "4h",  label: "4H",  desc: "4 hours" },
+  { value: "1d",  label: "1D",  desc: "1 day" },
+]
+
+const POLL_MAP = {
+  "1m": 30, "5m": 60, "15m": 60,
+  "30m": 120, "1h": 300, "4h": 600, "1d": 3600
+}
+
 export default function BotControls({ status, onStart, onStop, loading }) {
   const [symbol, setSymbol] = useState('AAPL')
   const [rsiPeriod, setRsiPeriod] = useState(14)
@@ -17,6 +32,7 @@ export default function BotControls({ status, onStart, onStop, loading }) {
   const [riskPerTradePct, setRiskPerTradePct] = useState(2)
   const [pollIntervalSeconds, setPollIntervalSeconds] = useState(300)
   const [dryRun, setDryRun] = useState(true)
+  const [timeframe, setTimeframe] = useState('1h')
 
   // Pre-fill form if bot is running with an active config
   useEffect(() => {
@@ -32,6 +48,7 @@ export default function BotControls({ status, onStart, onStop, loading }) {
         setRiskPerTradePct(cfg.risk_per_trade_pct || 2)
         setPollIntervalSeconds(cfg.poll_interval_seconds || 300)
         setDryRun(cfg.dry_run !== undefined ? cfg.dry_run : true)
+        setTimeframe(cfg.timeframe || '1h')
       })
     }
   }, [status])
@@ -48,6 +65,7 @@ export default function BotControls({ status, onStart, onStop, loading }) {
       risk_per_trade_pct: parseFloat(riskPerTradePct),
       poll_interval_seconds: parseInt(pollIntervalSeconds),
       dry_run: dryRun,
+      timeframe: timeframe,
     })
   }
 
@@ -175,6 +193,57 @@ export default function BotControls({ status, onStart, onStop, loading }) {
                 onChange={setRsiPeriod}
               />
             </div>
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ 
+              fontSize: 11, color: "#64748b", 
+              letterSpacing: "0.08em", 
+              display: "block", marginBottom: 8 
+            }}>
+              TIMEFRAME
+            </label>
+            <div style={{ display: "flex", gap: 4 }}>
+              {TIMEFRAMES.map(tf => (
+                <button
+                  key={tf.value}
+                  type="button"
+                  onClick={() => {
+                    setTimeframe(tf.value)
+                    setPollIntervalSeconds(POLL_MAP[tf.value])
+                  }}
+                  title={tf.desc}
+                  style={{
+                    flex: 1,
+                    padding: "8px 4px",
+                    fontSize: 11,
+                    fontWeight: 500,
+                    borderRadius: 5,
+                    border: `1px solid ${
+                      timeframe === tf.value 
+                        ? "#3b82f6" : "#2a2d3a"
+                    }`,
+                    background: timeframe === tf.value 
+                      ? "#1e3a5f" : "#0f1117",
+                    color: timeframe === tf.value 
+                      ? "#93c5fd" : "#64748b",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {tf.label}
+                </button>
+              ))}
+            </div>
+
+            {["1m", "5m"].includes(timeframe) && (
+              <p style={{ 
+                fontSize: 10, color: "#f59e0b", marginTop: 6 
+              }}>
+                ⚠ Short timeframes generate more signals but 
+                also more false signals and higher risk
+              </p>
+            )}
           </div>
 
           <div style={rowStyle}>

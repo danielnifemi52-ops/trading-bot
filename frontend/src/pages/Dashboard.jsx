@@ -133,7 +133,7 @@ export default function Dashboard() {
                 <span style={{ color: '#22c55e' }}>⚡ Streaming</span>
               ) : (
                 <>
-                  {"Wilder's Smoothed RSI"}
+                  RSI {status?.config?.rsi_period ?? 14} · {status?.config?.timeframe ?? "1h"} bars
                   {status?.config?.poll_interval_seconds && ` · ${status.config.poll_interval_seconds}s interval`}
                 </>
               )}

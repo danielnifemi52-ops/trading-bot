@@ -58,6 +58,7 @@ async def start_bot(req: BotConfigRequest, session: Session = Depends(get_sessio
         take_profit_pct=req.take_profit_pct,
         risk_per_trade_pct=req.risk_per_trade_pct,
         poll_interval_seconds=req.poll_interval_seconds,
+        timeframe=req.timeframe,
     )
     broker = Broker(paper=True, dry_run=req.dry_run)
     alerter = SyncAlerter()

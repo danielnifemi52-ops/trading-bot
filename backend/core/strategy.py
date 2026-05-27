@@ -24,6 +24,7 @@ class BotConfig:
     take_profit_pct: float = 10.0
     risk_per_trade_pct: float = 2.0
     poll_interval_seconds: int = 300
+    timeframe: str = "1h"
 
 
 @dataclass

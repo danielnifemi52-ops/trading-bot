@@ -39,15 +39,16 @@ class BotLog(SQLModel, table=True):
 
 class BotConfigRequest(SQLModel):
     """Request body for POST /api/bot/start"""
-    symbol: str = "AAPL"
+    symbol: str = "BTC/USD"
     rsi_period: int = 14
     oversold: float = 30.0
     overbought: float = 70.0
     stop_loss_pct: float = 5.0
     take_profit_pct: float = 10.0
     risk_per_trade_pct: float = 2.0
-    poll_interval_seconds: int = 30
+    poll_interval_seconds: int = 60
     dry_run: bool = True
+    timeframe: str = "1h"    # ← ADD THIS
 
 
 class BacktestRequest(SQLModel):

@@ -47,29 +47,41 @@ def market_is_open(symbol: str = "") -> bool:
     return MARKET_OPEN <= now.time() <= MARKET_CLOSE
 
 
-def fetch_crypto_prices(symbol: str, bars: int = 200) -> pd.Series:
+from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+
+def get_alpaca_timeframe(tf: str):
+    mapping = {
+        "1m":  TimeFrame(1,  TimeFrameUnit.Minute),
+        "5m":  TimeFrame(5,  TimeFrameUnit.Minute),
+        "15m": TimeFrame(15, TimeFrameUnit.Minute),
+        "30m": TimeFrame(30, TimeFrameUnit.Minute),
+        "1h":  TimeFrame(1,  TimeFrameUnit.Hour),
+        "4h":  TimeFrame(4,  TimeFrameUnit.Hour),
+        "1d":  TimeFrame(1,  TimeFrameUnit.Day),
+    }
+    return mapping.get(tf, TimeFrame(1, TimeFrameUnit.Hour))
+
+def fetch_crypto_prices(
+    symbol: str, 
+    bars: int = 200,
+    timeframe: str = "1h"
+) -> pd.Series:
     """
     Fetch crypto OHLCV bars from Alpaca.
     Symbol format: BTC/USD, ETH/USD, SOL/USD.
     """
     try:
         import os
-
         from alpaca.data.historical.crypto import CryptoHistoricalDataClient
         from alpaca.data.requests import CryptoBarsRequest
-        from alpaca.data.timeframe import TimeFrame
 
         client = CryptoHistoricalDataClient(
             api_key=os.environ["ALPACA_KEY"],
             secret_key=os.environ["ALPACA_SECRET"],
         )
-        end = datetime.now(timezone.utc)
-        start = end - timedelta(hours=bars + 24)
         req = CryptoBarsRequest(
             symbol_or_symbols=symbol,
-            timeframe=TimeFrame.Hour,
-            start=start,
-            end=end,
+            timeframe=get_alpaca_timeframe(timeframe),
             limit=bars,
         )
         bars_data = client.get_crypto_bars(req)
@@ -84,18 +96,27 @@ def fetch_crypto_prices(symbol: str, bars: int = 200) -> pd.Series:
         raise ValueError(f"Could not fetch crypto data for {symbol}: {e}")
 
 
-def fetch_prices(symbol: str, bars: int = 200) -> pd.Series:
-    """Auto-detect crypto vs stock and download recent hourly close prices."""
+def fetch_prices(symbol: str, bars: int = 200, timeframe: str = "1h") -> pd.Series:
+    """Auto-detect crypto vs stock and download recent close prices."""
     if is_crypto(symbol):
-        return fetch_crypto_prices(symbol, bars)
+        return fetch_crypto_prices(symbol, bars, timeframe)
 
     max_retries = 2
     df = pd.DataFrame()
+    yf_intervals = {
+        "1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m",
+        "1h": "1h", "4h": "1h", "1d": "1d"
+    }
+    yf_interval = yf_intervals.get(timeframe, "1h")
+    period = "60d"
+    if yf_interval in ["1m", "5m", "15m", "30m"]:
+        period = "7d" if yf_interval != "1m" else "1d"
+
     for attempt in range(max_retries):
         df = yf.download(
             symbol,
-            period="60d",
-            interval="1h",
+            period=period,
+            interval=yf_interval,
             auto_adjust=True,
             prepost=False,
             progress=False,
@@ -129,6 +150,19 @@ class BotRunner:
     ):
         """Initialise with config, broker, alerter, and optional callbacks."""
         self.cfg = cfg
+        # Auto-update poll interval based on timeframe
+        TIMEFRAME_POLL_MAP = {
+            "1m":  30,
+            "5m":  60,
+            "15m": 60,
+            "30m": 120,
+            "1h":  300,
+            "4h":  600,
+            "1d":  3600,
+        }
+        if hasattr(self.cfg, "timeframe") and self.cfg.timeframe in TIMEFRAME_POLL_MAP:
+            self.cfg.poll_interval_seconds = TIMEFRAME_POLL_MAP[self.cfg.timeframe]
+
         self.broker = broker
         self.alerter = alerter
         self.on_tick = on_tick
@@ -234,7 +268,7 @@ class BotRunner:
 
         # Fallback: fetch prices via HTTP polling
         try:
-            prices = fetch_prices(self.cfg.symbol)
+            prices = fetch_prices(self.cfg.symbol, timeframe=self.cfg.timeframe)
             rsi_ser = calc_rsi(prices, self.cfg.rsi_period)
             rsi = float(rsi_ser.iloc[-1])
             price = float(prices.iloc[-1])
