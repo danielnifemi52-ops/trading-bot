@@ -8,7 +8,7 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, func, select
+from sqlmodel import Session, select
 
 from db import get_session
 from models import BotConfigRequest, BotStatusResponse, BotLog, Trade
@@ -61,8 +61,6 @@ async def start_bot(req: BotConfigRequest, session: Session = Depends(get_sessio
     loop = asyncio.get_event_loop()
     tick_count = 0
 
-    _BOT_LOG_MAX_ROWS = 200
-
     def on_tick(price: float, rsi: float, signal: str, account: float):
         """Broadcast every tick; persist to DB only every 10th tick."""
         nonlocal tick_count
@@ -98,20 +96,6 @@ async def start_bot(req: BotConfigRequest, session: Session = Depends(get_sessio
                     timestamp=datetime.utcnow(),
                 ))
                 s.commit()
-
-                # Keep only last 200 rows
-                count = s.exec(
-                    select(func.count()).select_from(BotLog)
-                ).one()
-                if count > _BOT_LOG_MAX_ROWS:
-                    oldest = s.exec(
-                        select(BotLog)
-                        .order_by(BotLog.timestamp.asc())
-                        .limit(count - _BOT_LOG_MAX_ROWS)
-                    ).all()
-                    for old_row in oldest:
-                        s.delete(old_row)
-                    s.commit()
         except Exception as e:
             log.error(f"on_tick DB write failed: {e}")
 

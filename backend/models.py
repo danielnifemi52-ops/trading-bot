@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Optional, Literal
 from datetime import datetime
 from sqlmodel import SQLModel, Field
+from sqlalchemy import Column, DateTime
 
 
 # ── Database models (these create tables) ──────────────────────────────────
@@ -14,12 +15,15 @@ from sqlmodel import SQLModel, Field
 class Trade(SQLModel, table=True):
     """Persisted record of every trade the bot executes."""
     id: Optional[int] = Field(default=None, primary_key=True)
-    symbol: str
+    symbol: str = Field(index=True)
     side: str                         # "BUY" or "SELL"
     price: float
-    qty: float
+    qty: float                        # float supports crypto fractions
     rsi_at_signal: float
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(
+        default_factory=datetime.utcnow,
+        sa_column=Column(DateTime, default=datetime.utcnow)
+    )
     pnl: Optional[float] = None
     exit_reason: Optional[str] = None  # "RSI_SIGNAL" | "STOP_LOSS" | "TAKE_PROFIT"
 
@@ -27,12 +31,15 @@ class Trade(SQLModel, table=True):
 class BotLog(SQLModel, table=True):
     """One log line per bot tick — price, RSI, signal, account value."""
     id: Optional[int] = Field(default=None, primary_key=True)
-    symbol: str
+    symbol: str = Field(index=True)
     price: float
     rsi: float
     signal: str
     account_value: float
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(
+        default_factory=datetime.utcnow,
+        sa_column=Column(DateTime, default=datetime.utcnow)
+    )
 
 
 # ── Request schemas ─────────────────────────────────────────────────────────

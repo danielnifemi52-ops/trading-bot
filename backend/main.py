@@ -6,12 +6,14 @@ Run with: uvicorn main:app --reload
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from db import init_db
+from db import engine, init_db
 from ws import manager
 from routers import bot, backtest, optimizer, trades
 
@@ -22,15 +24,37 @@ logging.basicConfig(
     format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
 )
 
+log = logging.getLogger(__name__)
+scheduler = AsyncIOScheduler()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Runs on startup (before yield) and shutdown (after yield)."""
     init_db()
+    scheduler.start()
     yield
+    scheduler.shutdown(wait=False)
     # Clean shutdown: stop any running bot
     from state import bot_state
     bot_state.stop()
+
+
+async def cleanup_old_logs():
+    """Delete BotLog rows older than 7 days. Runs once per day."""
+    from sqlmodel import Session, select, delete
+    from models import BotLog
+    cutoff = datetime.utcnow() - timedelta(days=7)
+    try:
+        with Session(engine) as session:
+            session.exec(delete(BotLog).where(BotLog.timestamp < cutoff))  # type: ignore[arg-type]
+            session.commit()
+        log.info("Cleaned up BotLog rows older than 7 days")
+    except Exception as e:
+        log.error(f"cleanup_old_logs failed: {e}")
+
+
+scheduler.add_job(cleanup_old_logs, "interval", hours=24, id="cleanup_old_logs")
 
 
 app = FastAPI(
