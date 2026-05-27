@@ -36,6 +36,14 @@ class SyncAlerter:
         except Exception as e:
             log.error(f"Telegram alert failed: {e}")
 
+    def send(self, text: str) -> None:
+        """Public method to send custom raw alert text."""
+        # Simple markdown bold (*) to HTML (<b>) conversion
+        if "*" in text:
+            import re
+            text = re.sub(r'\*(.*?)\*', r'<b>\1</b>', text)
+        self._send(text)
+
     def signal_alert(
         self,
         symbol: str,

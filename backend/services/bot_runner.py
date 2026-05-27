@@ -266,6 +266,25 @@ class BotRunner:
 
     def _tick(self) -> None:
         """One bot tick: fetch prices via HTTP polling and execute signals."""
+        symbol = self.cfg.symbol
+        currently_open = market_is_open(symbol)
+
+        # Detect market open/close transitions
+        if hasattr(self, "_last_market_state"):
+            if not self._last_market_state and currently_open:
+                # Market just opened
+                self.alerter.send(
+                    f"🔔 *NYSE OPEN* — {symbol} is now trading\n"
+                    f"Bot is actively watching for RSI signals"
+                )
+            elif self._last_market_state and not currently_open:
+                # Market just closed
+                self.alerter.send(
+                    f"🔕 *NYSE CLOSED* — {symbol} stopped trading\n"
+                    f"Next session: tomorrow 2:30 PM Lagos time"
+                )
+        self._last_market_state = currently_open
+
         try:
             prices = fetch_prices(
                 self.cfg.symbol,

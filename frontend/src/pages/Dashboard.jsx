@@ -10,6 +10,7 @@ import StatCard from '../components/StatCard'
 import RSIGauge from '../components/RSIGauge'
 import BotControls from '../components/BotControls'
 import SignalBadge from '../components/SignalBadge'
+import { getMarketStatus } from '../utils/marketHours'
 
 export default function Dashboard() {
   const { status, liveData, loading, error, start, stop } = useBot()
@@ -74,6 +75,10 @@ export default function Dashboard() {
   const signal = liveData?.signal ?? status?.last_signal ?? 'HOLD'
   const account = liveData?.account ?? status?.account_value ?? null
 
+  const marketStatus = getMarketStatus(
+    status?.symbol || liveData?.symbol
+  )
+
   const formatPrice = (val) => {
     if (val === undefined || val === null) return '--'
     return new Intl.NumberFormat('en-US', {
@@ -125,6 +130,86 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Market Status Banner */}
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        background: marketStatus.isOpen 
+          ? "rgba(16,185,129,0.08)" 
+          : "rgba(239,68,68,0.08)",
+        border: `1px solid ${marketStatus.color}33`,
+        borderRadius: 8,
+        padding: "10px 16px",
+        marginBottom: 16,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Animated dot */}
+          <div style={{ position: "relative", width: 10, height: 10 }}>
+            <div style={{
+              width: 10, height: 10,
+              borderRadius: "50%",
+              background: marketStatus.dotColor,
+              position: "absolute",
+            }} />
+            {marketStatus.isOpen && (
+              <div style={{
+                width: 10, height: 10,
+                borderRadius: "50%",
+                background: marketStatus.dotColor,
+                position: "absolute",
+                opacity: 0.4,
+                animation: "ping 1.5s ease-in-out infinite",
+              }} />
+            )}
+          </div>
+          <div style={{ textAlign: 'left' }}>
+            <p style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: marketStatus.color,
+              margin: 0,
+            }}>
+              {marketStatus.label}
+            </p>
+            <p style={{
+              fontSize: 11,
+              color: "#64748b",
+              margin: 0,
+              marginTop: 2,
+            }}>
+              {marketStatus.sublabel}
+            </p>
+          </div>
+        </div>
+
+        {/* NYSE schedule for stocks */}
+        {!marketStatus.isOpen && !status?.symbol?.includes("/") && (
+          <div style={{
+            fontSize: 11,
+            color: "#475569",
+            textAlign: "right",
+          }}>
+            <p style={{ margin: 0 }}>Mon–Fri</p>
+            <p style={{ margin: 0, fontWeight: 500, color: "#94a3b8" }}>
+              2:30 PM – 9:00 PM Lagos
+            </p>
+          </div>
+        )}
+
+        {/* Crypto is always open */}
+        {status?.symbol?.includes("/") && (
+          <div style={{
+            fontSize: 11,
+            color: "#10b981",
+            textAlign: "right",
+          }}>
+            <p style={{ margin: 0 }}>365 days/year</p>
+            <p style={{ margin: 0, fontWeight: 500 }}>No restrictions</p>
+          </div>
+        )}
+      </div>
+
       {/* Top row: 4 Metric Cards */}
       <div style={{
         display: 'grid',
@@ -134,25 +219,22 @@ export default function Dashboard() {
         <StatCard
           label="Current Price"
           value={price !== null ? formatPrice(price) : '--'}
-          sub={status?.symbol ? `Symbol: ${status.symbol}` : 'Bot Idle'}
+          sub={
+            status?.symbol
+              ? marketStatus.isOpen
+                ? `Symbol: ${status.symbol}`
+                : `${status.symbol} · Last close price`
+              : 'Bot Idle'
+          }
           highlight={price !== null ? 'var(--blue)' : undefined}
         />
         <StatCard
           label="RSI Value (14h)"
           value={rsi !== null ? formatRsi(rsi) : '--'}
           sub={
-            <>
-              {liveData?.source === 'stream' ? (
-                <span style={{ color: '#22c55e' }}>⚡ Live stream</span>
-              ) : status?.stream_active ? (
-                <span style={{ color: '#22c55e' }}>⚡ Streaming</span>
-              ) : (
-                <>
-                  RSI {status?.config?.rsi_period ?? 14} · {status?.config?.timeframe ?? "1h"} bars
-                  {status?.config?.poll_interval_seconds && ` · ${status.config.poll_interval_seconds}s interval`}
-                </>
-              )}
-            </>
+            marketStatus.isOpen
+              ? `RSI ${status?.config?.rsi_period ?? 14} · Live`
+              : `RSI ${status?.config?.rsi_period ?? 14} · Market closed`
           }
           highlight={rsi !== null ? (rsi <= status?.config?.oversold ? 'var(--green)' : rsi >= status?.config?.overbought ? 'var(--red)' : 'var(--text)') : undefined}
         />
