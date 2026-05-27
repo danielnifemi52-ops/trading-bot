@@ -112,20 +112,16 @@ export default function Layout({ children }) {
           alignItems: 'center',
           gap: '12px',
         }}>
-          <div style={{
-            background: 'var(--blue)',
-            width: '32px',
-            height: '32px',
-            borderRadius: '8px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: 'bold',
-            fontSize: '18px',
-            color: 'white',
-          }}>
-            Ω
-          </div>
+          <img 
+            src="/logo.png" 
+            alt="RSI Bot Logo" 
+            style={{ 
+              width: '32px', 
+              height: '32px', 
+              borderRadius: '8px',
+              objectFit: 'cover'
+            }} 
+          />
           <div>
             <h1 style={{ fontSize: '15px', fontWeight: '700', letterSpacing: '0.05em' }}>
               RSI BOT
@@ -182,19 +178,16 @@ export default function Layout({ children }) {
           justifyContent: 'space-between',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              background: 'var(--blue)',
-              width: '32px',
-              height: '32px',
-              borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 'bold',
-              color: 'white',
-            }}>
-              Ω
-            </div>
+            <img 
+              src="/logo.png" 
+              alt="RSI Bot Logo" 
+              style={{ 
+                width: '32px', 
+                height: '32px', 
+                borderRadius: '8px',
+                objectFit: 'cover'
+              }} 
+            />
             <h1 style={{ fontSize: '15px', fontWeight: '700' }}>RSI BOT</h1>
           </div>
           <button
