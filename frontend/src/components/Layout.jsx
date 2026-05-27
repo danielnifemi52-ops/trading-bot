@@ -128,7 +128,7 @@ export default function Layout({ children }) {
           </div>
           <div>
             <h1 style={{ fontSize: '15px', fontWeight: '700', letterSpacing: '0.05em' }}>
-              ANTIGRAVITY
+              RSI BOT
             </h1>
             <span style={{ fontSize: '10px', color: 'var(--muted)', fontWeight: '600' }}>
               RSI TRADING SUITE
@@ -195,7 +195,7 @@ export default function Layout({ children }) {
             }}>
               Ω
             </div>
-            <h1 style={{ fontSize: '15px', fontWeight: '700' }}>ANTIGRAVITY</h1>
+            <h1 style={{ fontSize: '15px', fontWeight: '700' }}>RSI BOT</h1>
           </div>
           <button
             onClick={() => setMobileOpen(false)}

@@ -45,7 +45,7 @@ Thumbs.db
 .idea/
 *.swp
 
-.AGENTS.md
-.Makefile
+AGENTS.md
+Makefile
 
 .gitignore
