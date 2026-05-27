@@ -8,7 +8,7 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, select
+from sqlmodel import Session, func, select
 
 from db import get_session
 from models import BotConfigRequest, BotStatusResponse, BotLog, Trade
@@ -65,11 +65,14 @@ async def start_bot(req: BotConfigRequest, session: Session = Depends(get_sessio
 
     loop = asyncio.get_event_loop()
 
+    _BOT_LOG_MAX_ROWS = 500
+
     def on_tick(price: float, rsi: float, signal: str, account: float, source: str = "poll"):
-        """Persist a BotLog row and broadcast to WebSocket clients."""
+        """Persist a BotLog row, trim table to last 500 rows, and broadcast."""
         from db import engine
         try:
             with Session(engine) as s:
+                # ── Insert new row ───────────────────────────────────────────
                 row = BotLog(
                     symbol=req.symbol, price=price, rsi=rsi,
                     signal=signal, account_value=account,
@@ -77,6 +80,21 @@ async def start_bot(req: BotConfigRequest, session: Session = Depends(get_sessio
                 )
                 s.add(row)
                 s.commit()
+
+                # ── FIX 2: Keep only last 500 rows ──────────────────────────
+                count = s.exec(
+                    select(func.count()).select_from(BotLog)
+                ).one()
+                if count > _BOT_LOG_MAX_ROWS:
+                    excess = count - _BOT_LOG_MAX_ROWS
+                    oldest = s.exec(
+                        select(BotLog)
+                        .order_by(BotLog.timestamp.asc())
+                        .limit(excess)
+                    ).all()
+                    for old_row in oldest:
+                        s.delete(old_row)
+                    s.commit()
         except Exception as e:
             log.error(f"on_tick DB write failed: {e}")
 

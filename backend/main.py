@@ -90,19 +90,39 @@ async def websocket_live(ws: WebSocket):
 
 @app.get("/health")
 async def health():
-    """Health check endpoint that verifies database connection and overall system health."""
-    health_status = {"status": "ok", "db": "unknown"}
+    """Health check: DB ping + psutil memory usage."""
+    import psutil, os as _os
+    from state import bot_state
+
+    # Memory (FIX 3)
+    try:
+        mem_mb = psutil.Process(_os.getpid()).memory_info().rss / 1_048_576
+    except Exception:
+        mem_mb = 0.0
+
+    MEM_LIMIT = 512
+    status_str = "warning" if mem_mb > 450 else "ok"
+
+    # DB ping
+    db_status = "unknown"
     try:
         from sqlmodel import Session, text
         from db import engine
         with Session(engine) as session:
             session.execute(text("SELECT 1"))
-        health_status["db"] = "ok"
+        db_status = "ok"
     except Exception as e:
-        health_status["status"] = "error"
-        health_status["db"] = f"error: {str(e)}"
-    
-    if health_status["status"] == "ok":
-        return health_status
-    else:
-        return JSONResponse(status_code=503, content=health_status)
+        status_str = "error"
+        db_status = f"error: {e}"
+
+    payload = {
+        "status": status_str,
+        "db": db_status,
+        "memory_mb": round(mem_mb, 1),
+        "memory_limit_mb": MEM_LIMIT,
+        "memory_pct": round(mem_mb / MEM_LIMIT * 100, 1),
+        "bot_running": bot_state.is_running,
+    }
+    if status_str == "error":
+        return JSONResponse(status_code=503, content=payload)
+    return payload

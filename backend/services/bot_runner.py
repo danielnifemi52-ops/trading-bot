@@ -6,7 +6,9 @@ Never imports FastAPI; it is framework-agnostic.
 """
 from __future__ import annotations
 
+import gc
 import logging
+import os
 import threading
 import time
 from collections import deque
@@ -15,6 +17,7 @@ from typing import Callable, Optional
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+import psutil
 import yfinance as yf
 
 from core.risk import should_stop_loss, should_take_profit
@@ -31,6 +34,24 @@ from services.broker import Broker, is_crypto
 from services.stream import PriceStreamer
 
 log = logging.getLogger(__name__)
+
+# ── Supported symbol sets ────────────────────────────────────────────────────
+# Keep in sync with frontend/src/components/TickerSelect.jsx
+ALPACA_CRYPTO = {
+    "BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD", "DOGE/USD",
+    "SHIB/USD", "LTC/USD", "BCH/USD", "LINK/USD", "UNI/USD",
+    "AAVE/USD", "CRV/USD",
+}
+ALPACA_STOCKS = {
+    "AAPL", "MSFT", "GOOGL", "AMZN", "META",
+    "NVDA", "TSLA", "AMD",  "NFLX", "V",
+    "SPY",  "QQQ",  "IWM",  "DIA",  "VTI",
+}
+
+
+class UnsupportedSymbolError(ValueError):
+    """Raised when a symbol is not supported by the configured data source."""
+    pass
 
 MARKET_OPEN = dt_time(9, 30)
 MARKET_CLOSE = dt_time(16, 0)
@@ -62,14 +83,23 @@ def get_alpaca_timeframe(tf: str):
     return mapping.get(tf, TimeFrame(1, TimeFrameUnit.Hour))
 
 def fetch_crypto_prices(
-    symbol: str, 
+    symbol: str,
     bars: int = 200,
-    timeframe: str = "1h"
+    timeframe: str = "1h",
 ) -> pd.Series:
     """
     Fetch crypto OHLCV bars from Alpaca.
     Symbol format: BTC/USD, ETH/USD, SOL/USD.
+    Raises UnsupportedSymbolError immediately for unknown symbols.
     """
+    # ── Guard: reject symbols Alpaca doesn't support ─────────────────────────
+    if symbol not in ALPACA_CRYPTO:
+        supported = ", ".join(sorted(ALPACA_CRYPTO))
+        raise UnsupportedSymbolError(
+            f"{symbol!r} is not supported by Alpaca crypto data. "
+            f"Supported pairs: {supported}"
+        )
+
     try:
         import os
         from alpaca.data.historical.crypto import CryptoHistoricalDataClient
@@ -89,10 +119,12 @@ def fetch_crypto_prices(
         if isinstance(df.index, pd.MultiIndex):
             df = df.reset_index(level=0, drop=True)
         if df.empty:
-            raise ValueError(f"No price data for {symbol}")
+            raise ValueError(f"No price data returned for {symbol}")
         return df["close"].squeeze().dropna().tail(bars)
+    except UnsupportedSymbolError:
+        raise  # already descriptive — don't wrap
     except Exception as e:
-        log.error(f"fetch_crypto_prices failed: {e}")
+        log.error(f"fetch_crypto_prices failed for {symbol}: {e}")
         raise ValueError(f"Could not fetch crypto data for {symbol}: {e}")
 
 
@@ -174,7 +206,7 @@ class BotRunner:
         self.last_signal: str = "HOLD"
         self.open_trade: dict | None = None
         self._last_heartbeat: float = 0.0
-        self._price_buffer: deque = deque(maxlen=500)
+        self._price_buffer: deque = deque(maxlen=200)  # hard cap — never grows beyond 200 items
         self._streamer: Optional[PriceStreamer] = None
         self._use_stream = use_stream
         self._stream_active = False
@@ -239,9 +271,23 @@ class BotRunner:
                 price=price, rsi=rsi, signal=signal, account=acct, source="stream"
             )
 
+    def _check_memory(self) -> bool:
+        """Returns True if memory was dangerously high and caches were cleared."""
+        try:
+            mem_mb = psutil.Process(os.getpid()).memory_info().rss / 1_048_576
+            if mem_mb > 450:
+                log.warning(f"High memory: {mem_mb:.0f} MB — clearing price buffer and running GC")
+                self._price_buffer.clear()
+                gc.collect()
+                return True
+        except Exception:
+            pass
+        return False
+
     def _loop(self) -> None:
         """Main loop; runs until stop() is called."""
         while not self._stop_evt.is_set():
+            self._check_memory()          # FIX 4 — shed memory before every tick
             try:
                 self._tick()
             except Exception as e:
@@ -269,6 +315,24 @@ class BotRunner:
         # Fallback: fetch prices via HTTP polling
         try:
             prices = fetch_prices(self.cfg.symbol, timeframe=self.cfg.timeframe)
+        except UnsupportedSymbolError as e:
+            # ── Unsupported symbol: alert the user and stop the bot ───────────
+            msg = str(e)
+            log.error(f"Unsupported symbol — stopping bot: {msg}")
+            try:
+                self.alerter.error_alert(
+                    f"⛔ Bot stopped: {msg}. "
+                    f"Please restart with a supported symbol."
+                )
+            except Exception:
+                pass
+            self.stop()  # clean shutdown — no more retries
+            return
+        except Exception as e:
+            log.error(f"Data fetch error for {self.cfg.symbol}: {e}")
+            return
+
+        try:
             rsi_ser = calc_rsi(prices, self.cfg.rsi_period)
             rsi = float(rsi_ser.iloc[-1])
             price = float(prices.iloc[-1])
@@ -286,7 +350,7 @@ class BotRunner:
             self._execute_signal(signal, price, rsi, acct)
 
         except Exception as e:
-            log.error(f"Data fetch error: {e}")
+            log.error(f"Signal processing error: {e}")
 
         if time.time() - self._last_heartbeat > 3600:
             self.alerter.heartbeat(

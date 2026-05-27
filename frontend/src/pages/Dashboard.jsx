@@ -15,6 +15,21 @@ export default function Dashboard() {
   const { status, liveData, loading, error, start, stop } = useBot()
   const [logs, setLogs] = useState([])
   const [logsLoading, setLogsLoading] = useState(false)
+  const [health, setHealth] = useState(null)  // FIX 6 — memory widget
+
+  // ── FIX 6: Poll /health every 60 s for memory data ────────────────────
+  useEffect(() => {
+    const API = import.meta.env.VITE_API_URL || ''
+    const fetchHealth = async () => {
+      try {
+        const res = await fetch(`${API}/health`)
+        if (res.ok) setHealth(await res.json())
+      } catch (_) {}
+    }
+    fetchHealth()
+    const id = setInterval(fetchHealth, 60_000)
+    return () => clearInterval(id)
+  }, [])
 
   // Fetch logs on mount and whenever the bot status changes (e.g. started/stopped)
   const fetchLogs = useCallback(async () => {
@@ -289,6 +304,56 @@ export default function Dashboard() {
           </table>
         </div>
       </div>
+      {/* ── FIX 6: Fixed RAM usage widget ──────────────────────────────── */}
+      {health && (
+        <div style={{
+          position: 'fixed',
+          bottom: 20,
+          right: 20,
+          background: '#0f1117',
+          border: `1px solid ${
+            health.memory_pct > 85 ? '#ef4444'
+            : health.memory_pct > 70 ? '#f59e0b'
+            : '#2a2d3a'
+          }`,
+          borderRadius: 10,
+          padding: '9px 14px',
+          fontSize: 11,
+          color: '#64748b',
+          zIndex: 9999,
+          minWidth: 110,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+          userSelect: 'none',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
+            <span style={{ fontSize: 9 }}>💾</span>
+            <span style={{
+              color: health.memory_pct > 85 ? '#ef4444'
+                   : health.memory_pct > 70 ? '#f59e0b'
+                   : '#94a3b8',
+              fontWeight: 600,
+            }}>
+              {health.memory_mb} MB
+            </span>
+            <span style={{ color: '#334155' }}>/ 512</span>
+          </div>
+          {/* Progress bar */}
+          <div style={{ width: 82, height: 3, background: '#1e2330', borderRadius: 2 }}>
+            <div style={{
+              width: `${Math.min(health.memory_pct, 100)}%`,
+              height: '100%',
+              borderRadius: 2,
+              transition: 'width 0.4s ease',
+              background: health.memory_pct > 85 ? '#ef4444'
+                        : health.memory_pct > 70 ? '#f59e0b'
+                        : '#10b981',
+            }} />
+          </div>
+          <div style={{ marginTop: 4, fontSize: 9, color: '#334155' }}>
+            {health.memory_pct}% · RAM
+          </div>
+        </div>
+      )}
     </div>
   )
 }
