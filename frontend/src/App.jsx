@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard'
 import Backtest from './pages/Backtest'
 import Optimizer from './pages/Optimizer'
 import Trades from './pages/Trades'
+import Account from './pages/Account'
 import './styles/globals.css'
 
 export default function App() {
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/backtest"  element={<Backtest />} />
           <Route path="/optimizer" element={<Optimizer />} />
           <Route path="/trades"    element={<Trades />} />
+          <Route path="/account"   element={<Account />} />
           <Route path="*"          element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>

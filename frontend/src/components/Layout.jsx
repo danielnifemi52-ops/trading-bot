@@ -48,6 +48,8 @@ export default function Layout({ children }) {
         return 'Parameter Optimization'
       case '/trades':
         return 'Trade Records'
+      case '/account':
+        return 'Alpaca Account'
       default:
         return 'RSI Trading Bot'
     }
@@ -78,6 +80,12 @@ export default function Layout({ children }) {
     trades: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+      </svg>
+    ),
+    account: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="2" y="5" width="20" height="14" rx="2" />
+        <line x1="2" y1="10" x2="22" y2="10" />
       </svg>
     ),
   }
@@ -138,6 +146,7 @@ export default function Layout({ children }) {
           <SidebarLink to="/backtest" label="Backtest Simulator" icon={icons.backtest} />
           <SidebarLink to="/optimizer" label="Parameter Optimizer" icon={icons.optimizer} />
           <SidebarLink to="/trades" label="Trades History" icon={icons.trades} />
+          <SidebarLink to="/account" label="Alpaca Account" icon={icons.account} />
         </nav>
 
         {/* Sidebar Footer */}
@@ -207,6 +216,7 @@ export default function Layout({ children }) {
           <SidebarLink to="/backtest" label="Backtest" icon={icons.backtest} onClick={() => setMobileOpen(false)} />
           <SidebarLink to="/optimizer" label="Optimizer" icon={icons.optimizer} onClick={() => setMobileOpen(false)} />
           <SidebarLink to="/trades" label="Trades" icon={icons.trades} onClick={() => setMobileOpen(false)} />
+          <SidebarLink to="/account" label="Alpaca Account" icon={icons.account} onClick={() => setMobileOpen(false)} />
         </nav>
       </aside>
 

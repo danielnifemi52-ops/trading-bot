@@ -5,7 +5,7 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import { useBot } from '../hooks/useBot'
-import { getBotLogs, manualTrade } from '../api/client'
+import { getBotLogs, manualTrade, getAccount } from '../api/client'
 import StatCard from '../components/StatCard'
 import RSIGauge from '../components/RSIGauge'
 import BotControls from '../components/BotControls'
@@ -22,6 +22,15 @@ export default function Dashboard() {
   const [tradeResult, setTradeResult]   = useState(null)
   const [tradeError, setTradeError]     = useState(null)
   const [showConfirm, setShowConfirm]   = useState(null)
+  const [alpacaAccount, setAlpacaAccount] = useState(null)
+
+  useEffect(() => {
+    getAccount().then(r => setAlpacaAccount(r.data)).catch(() => {})
+    const id = setInterval(() => {
+      getAccount().then(r => setAlpacaAccount(r.data)).catch(() => {})
+    }, 30000)
+    return () => clearInterval(id)
+  }, [])
 
   // ── FIX 6: Poll /health every 60 s for memory data ────────────────────
   useEffect(() => {
@@ -278,9 +287,15 @@ export default function Dashboard() {
           sub={status?.running ? 'Live Signal Polling' : 'Bot Offline'}
         />
         <StatCard
-          label="Simulated Account Value"
-          value={account !== null ? formatPrice(account) : '--'}
-          sub="Risk per trade capital base"
+          label="Account Value"
+          value={alpacaAccount?.portfolio_value
+            ? `$${Number(alpacaAccount.portfolio_value).toLocaleString("en-US", {minimumFractionDigits: 2})}`
+            : `$${(liveData?.account || 10000).toLocaleString()}`
+          }
+          sub={alpacaAccount?.connected
+            ? `Cash: $${Number(alpacaAccount.cash).toFixed(2)}`
+            : "Simulated"
+          }
           highlight="var(--green)"
         />
       </div>

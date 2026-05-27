@@ -23,6 +23,10 @@ export const stopBot     = ()        => api.post('/api/bot/stop')
 export const getBotLogs  = (limit)   => api.get(`/api/bot/logs?limit=${limit ?? 100}`)
 export const manualTrade = (symbol, side, qty = null) =>
   api.post('/api/bot/trade', { symbol, side, qty })
+export const getAccount    = ()        => api.get("/api/bot/account")
+export const getPositions  = ()        => api.get("/api/bot/positions")
+export const getOrders     = (limit)   => api.get(`/api/bot/orders?limit=${limit ?? 20}`)
+export const closePosition = (symbol)  => api.delete(`/api/bot/positions/${encodeURIComponent(symbol)}`)
 
 // -- Backtest -----------------------------------------------------------------
 

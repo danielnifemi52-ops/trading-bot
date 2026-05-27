@@ -162,7 +162,7 @@ async def manual_trade(req: ManualTradeRequest):
     """
     cfg      = bot_state.config
     is_paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
-    dry_run  = cfg.dry_run if cfg else True
+    dry_run  = False
     broker   = Broker(paper=is_paper, dry_run=dry_run)
     alerter  = SyncAlerter()
 
@@ -382,3 +382,134 @@ def _get_recommendation(results: dict) -> str:
     if yfinance.get("status") == "ok":
         return "Use yfinance fallback — Alpaca not available for this symbol"
     return "No data source working — check API keys and symbol name"
+
+
+# ---------------------------------------------------------------------------
+# Alpaca Account Sync Endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/account")
+async def get_account():
+    """Get real account data from Alpaca paper trading."""
+    try:
+        is_paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
+        broker = Broker(paper=is_paper, dry_run=False)
+        
+        if not broker.client:
+            return {
+                "connected": False,
+                "message": "Alpaca not configured",
+            }
+
+        acct = broker.client.get_account()
+        
+        return {
+            "connected":        True,
+            "account_id":       str(acct.id),
+            "status":           str(acct.status),
+            "currency":         str(acct.currency),
+            "portfolio_value":  float(acct.portfolio_value),
+            "cash":             float(acct.cash),
+            "buying_power":     float(acct.buying_power),
+            "equity":           float(acct.equity),
+            "last_equity":      float(acct.last_equity),
+            "pnl":              float(acct.equity) - float(acct.last_equity),
+            "pnl_pct":          ((float(acct.equity) - float(acct.last_equity)) 
+                                 / float(acct.last_equity) * 100) 
+                                 if float(acct.last_equity) > 0 else 0,
+            "paper":            is_paper,
+        }
+    except Exception as e:
+        log.error(f"Account fetch error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/positions")
+async def get_positions():
+    """Get all open positions from Alpaca."""
+    try:
+        is_paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
+        broker = Broker(paper=is_paper, dry_run=False)
+        
+        if not broker.client:
+            return {"positions": []}
+
+        positions = broker.client.get_all_positions()
+        
+        return {
+            "positions": [
+                {
+                    "symbol":        str(p.symbol),
+                    "qty":           float(p.qty),
+                    "side":          str(p.side),
+                    "entry_price":   float(p.avg_entry_price),
+                    "current_price": float(p.current_price),
+                    "market_value":  float(p.market_value),
+                    "cost_basis":    float(p.cost_basis),
+                    "unrealized_pnl":float(p.unrealized_pl),
+                    "unrealized_pct":float(p.unrealized_plpc) * 100,
+                    "change_today":  float(p.change_today),
+                }
+                for p in positions
+            ]
+        }
+    except Exception as e:
+        log.error(f"Positions fetch error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/orders")
+async def get_orders(limit: int = 20):
+    """Get recent orders from Alpaca."""
+    try:
+        from alpaca.trading.requests import GetOrdersRequest
+        from alpaca.trading.enums import QueryOrderStatus
+
+        is_paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
+        broker = Broker(paper=is_paper, dry_run=False)
+
+        if not broker.client:
+            return {"orders": []}
+
+        req = GetOrdersRequest(
+            status=QueryOrderStatus.ALL,
+            limit=limit,
+        )
+        orders = broker.client.get_orders(req)
+
+        return {
+            "orders": [
+                {
+                    "id":          str(o.id),
+                    "symbol":      str(o.symbol),
+                    "side":        str(o.side),
+                    "qty":         float(o.qty or 0),
+                    "filled_qty":  float(o.filled_qty or 0),
+                    "filled_price":float(o.filled_avg_price or 0),
+                    "status":      str(o.status),
+                    "type":        str(o.order_type),
+                    "created_at":  str(o.created_at),
+                    "filled_at":   str(o.filled_at) if o.filled_at else None,
+                }
+                for o in orders
+            ]
+        }
+    except Exception as e:
+        log.error(f"Orders fetch error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/positions/{symbol:path}")
+async def close_position_endpoint(symbol: str):
+    """Close a specific position from the dashboard."""
+    try:
+        is_paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
+        broker = Broker(paper=is_paper, dry_run=False)
+        ok = broker.close_position(symbol)
+        if ok:
+            return {"ok": True, "message": f"Position closed: {symbol}"}
+        raise HTTPException(status_code=500, detail="Failed to close position")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
