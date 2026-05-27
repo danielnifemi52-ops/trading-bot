@@ -357,20 +357,24 @@ class BotRunner:
             has_pos = self.broker.has_position(self.cfg.symbol)
 
         # BUY signal
-        if signal == "BUY" and not has_pos and self.last_signal != "BUY":
+        if signal == "BUY" and self.last_signal != "BUY":
             qty = position_size(acct, price, self.cfg, crypto=is_crypto(self.cfg.symbol))
             sl = stop_price(price, self.cfg)
             tp = take_profit_price(price, self.cfg)
-            if qty > 0:
-                self.alerter.signal_alert(
-                    symbol=self.cfg.symbol,
-                    signal="BUY",
-                    price=price,
-                    rsi=rsi,
-                    qty=qty,
-                    stop=sl,
-                    take_profit=tp,
-                )
+            
+            # Always alert on BUY signal transition
+            self.alerter.signal_alert(
+                symbol=self.cfg.symbol,
+                signal="BUY",
+                price=price,
+                rsi=rsi,
+                qty=qty,
+                stop=sl,
+                take_profit=tp,
+            )
+            
+            # Place order only if we do not already have a position
+            if not has_pos and qty > 0:
                 if self.broker.place_market_order(self.cfg.symbol, qty, "BUY"):
                     self.open_trade = {"entry": price, "qty": qty, "sl": sl, "tp": tp}
                     if self.on_trade:
@@ -383,24 +387,30 @@ class BotRunner:
                         })
 
         # SELL via RSI
-        elif signal == "SELL" and has_pos and self.last_signal != "SELL":
-            if self.open_trade:
-                pnl = (price - self.open_trade["entry"]) * self.open_trade["qty"]
-                self.alerter.trade_closed_alert(
-                    symbol=self.cfg.symbol,
-                    side="SELL",
-                    entry=self.open_trade["entry"],
-                    exit_price=price,
-                    pnl=pnl,
-                    exit_reason="RSI_SIGNAL",
-                    account_value=acct,
-                )
+        elif signal == "SELL" and self.last_signal != "SELL":
+            entry = self.open_trade["entry"] if self.open_trade else price
+            qty = self.open_trade["qty"] if self.open_trade else 0.0
+            pnl = (price - entry) * qty
+            
+            # Always alert on SELL signal transition
+            self.alerter.trade_closed_alert(
+                symbol=self.cfg.symbol,
+                side="SELL",
+                entry=entry,
+                exit_price=price,
+                pnl=pnl,
+                exit_reason="RSI_SIGNAL",
+                account_value=acct,
+            )
+            
+            # Close position only if we currently have one
+            if has_pos:
                 if self.broker.close_position(self.cfg.symbol):
                     if self.on_trade:
                         self.on_trade({
                             "side": "SELL",
                             "price": price,
-                            "qty": self.open_trade["qty"],
+                            "qty": qty,
                             "pnl": pnl,
                             "exit_reason": "RSI_SIGNAL",
                             "symbol": self.cfg.symbol,
