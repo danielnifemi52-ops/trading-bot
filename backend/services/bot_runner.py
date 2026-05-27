@@ -362,17 +362,17 @@ class BotRunner:
             sl = stop_price(price, self.cfg)
             tp = take_profit_price(price, self.cfg)
             if qty > 0:
+                self.alerter.signal_alert(
+                    symbol=self.cfg.symbol,
+                    signal="BUY",
+                    price=price,
+                    rsi=rsi,
+                    qty=qty,
+                    stop=sl,
+                    take_profit=tp,
+                )
                 if self.broker.place_market_order(self.cfg.symbol, qty, "BUY"):
                     self.open_trade = {"entry": price, "qty": qty, "sl": sl, "tp": tp}
-                    self.alerter.signal_alert(
-                        symbol=self.cfg.symbol,
-                        signal="BUY",
-                        price=price,
-                        rsi=rsi,
-                        qty=qty,
-                        stop=sl,
-                        take_profit=tp,
-                    )
                     if self.on_trade:
                         self.on_trade({
                             "side": "BUY",
@@ -384,7 +384,7 @@ class BotRunner:
 
         # SELL via RSI
         elif signal == "SELL" and has_pos and self.last_signal != "SELL":
-            if self.broker.close_position(self.cfg.symbol) and self.open_trade:
+            if self.open_trade:
                 pnl = (price - self.open_trade["entry"]) * self.open_trade["qty"]
                 self.alerter.trade_closed_alert(
                     symbol=self.cfg.symbol,
@@ -395,31 +395,32 @@ class BotRunner:
                     exit_reason="RSI_SIGNAL",
                     account_value=acct,
                 )
-                if self.on_trade:
-                    self.on_trade({
-                        "side": "SELL",
-                        "price": price,
-                        "qty": self.open_trade["qty"],
-                        "pnl": pnl,
-                        "exit_reason": "RSI_SIGNAL",
-                        "symbol": self.cfg.symbol,
-                    })
-                self.open_trade = None
+                if self.broker.close_position(self.cfg.symbol):
+                    if self.on_trade:
+                        self.on_trade({
+                            "side": "SELL",
+                            "price": price,
+                            "qty": self.open_trade["qty"],
+                            "pnl": pnl,
+                            "exit_reason": "RSI_SIGNAL",
+                            "symbol": self.cfg.symbol,
+                        })
+                    self.open_trade = None
 
         # Stop loss / take profit checks
         elif has_pos and self.open_trade:
             if should_stop_loss(price, self.open_trade["entry"], self.cfg):
+                pnl = (price - self.open_trade["entry"]) * self.open_trade["qty"]
+                self.alerter.trade_closed_alert(
+                    symbol=self.cfg.symbol,
+                    side="SELL",
+                    entry=self.open_trade["entry"],
+                    exit_price=price,
+                    pnl=pnl,
+                    exit_reason="STOP_LOSS",
+                    account_value=acct,
+                )
                 if self.broker.close_position(self.cfg.symbol):
-                    pnl = (price - self.open_trade["entry"]) * self.open_trade["qty"]
-                    self.alerter.trade_closed_alert(
-                        symbol=self.cfg.symbol,
-                        side="SELL",
-                        entry=self.open_trade["entry"],
-                        exit_price=price,
-                        pnl=pnl,
-                        exit_reason="STOP_LOSS",
-                        account_value=acct,
-                    )
                     if self.on_trade:
                         self.on_trade({
                             "side": "SELL",
@@ -432,17 +433,17 @@ class BotRunner:
                     self.open_trade = None
 
             elif should_take_profit(price, self.open_trade["entry"], self.cfg):
+                pnl = (price - self.open_trade["entry"]) * self.open_trade["qty"]
+                self.alerter.trade_closed_alert(
+                    symbol=self.cfg.symbol,
+                    side="SELL",
+                    entry=self.open_trade["entry"],
+                    exit_price=price,
+                    pnl=pnl,
+                    exit_reason="TAKE_PROFIT",
+                    account_value=acct,
+                )
                 if self.broker.close_position(self.cfg.symbol):
-                    pnl = (price - self.open_trade["entry"]) * self.open_trade["qty"]
-                    self.alerter.trade_closed_alert(
-                        symbol=self.cfg.symbol,
-                        side="SELL",
-                        entry=self.open_trade["entry"],
-                        exit_price=price,
-                        pnl=pnl,
-                        exit_reason="TAKE_PROFIT",
-                        account_value=acct,
-                    )
                     if self.on_trade:
                         self.on_trade({
                             "side": "SELL",
