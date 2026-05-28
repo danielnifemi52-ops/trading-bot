@@ -31,6 +31,10 @@ scheduler = AsyncIOScheduler()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Runs on startup (before yield) and shutdown (after yield)."""
+    # Reset stale state from previous deploy — must run before accepting requests
+    from state import bot_state
+    bot_state.reset()
+
     init_db()
     scheduler.start()
 
@@ -56,7 +60,6 @@ async def lifespan(app: FastAPI):
     yield
     scheduler.shutdown(wait=False)
     # Clean shutdown: stop any running bot
-    from state import bot_state
     bot_state.stop()
 
 

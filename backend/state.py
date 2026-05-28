@@ -5,10 +5,13 @@ Shared between the bot runner thread and FastAPI request handlers.
 All attributes are read/written with threading.Lock for safety.
 """
 from __future__ import annotations
+import logging
 import threading
 from typing import Optional
 from models import BotConfigRequest, OptimizerRun
 from services.bot_runner import BotRunner
+
+log = logging.getLogger(__name__)
 
 
 class BotState:
@@ -78,6 +81,19 @@ class BotState:
         """Return the current bot configuration."""
         with self._lock:
             return self._config
+
+    def reset(self) -> None:
+        """Reset all state — call on server startup to clear stale state from a previous deploy."""
+        with self._lock:
+            if self._runner:
+                try:
+                    self._runner.stop()
+                except Exception:
+                    pass
+            self._runner = None
+            self._config = None
+            self.optimizer_jobs = {}
+        log.info("Bot state reset on startup")
 
 
 bot_state = BotState()

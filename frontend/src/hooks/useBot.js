@@ -82,7 +82,8 @@ export function useBot() {
     setLoading(true)
     setError(null)
     try {
-      await apiStart(config)
+      // Always force restart — handles stale state after redeploy
+      await apiStart({ ...config, force_restart: true })
       const { data } = await getStatus()
       setStatus(data)
     } catch (e) {

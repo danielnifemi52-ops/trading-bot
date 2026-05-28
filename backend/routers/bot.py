@@ -5,6 +5,7 @@ bot.py
 from __future__ import annotations
 import asyncio
 import logging
+import os
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -23,26 +24,102 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/status", response_model=BotStatusResponse)
-def get_status():
-    """Return the current bot status."""
-    return BotStatusResponse(
-        running=bot_state.is_running,
-        symbol=bot_state.config.symbol if bot_state.config else None,
-        last_price=bot_state.last_price,
-        last_rsi=bot_state.last_rsi,
-        last_signal=bot_state.last_signal,
-        account_value=10000.0,
-        open_position=bot_state.open_position,
-        config=bot_state.config,
-    )
+@router.get("/status")
+async def get_status():
+    """Return the current bot status. Never returns 500."""
+    try:
+        # Safe attribute access — never crash on a bad state
+        is_running    = False
+        last_price    = None
+        last_rsi      = None
+        last_signal   = "HOLD"
+        open_position = False
+        config        = None
+        stream_active = False
+
+        try:
+            is_running = bot_state.is_running
+        except Exception:
+            pass
+        try:
+            last_price = bot_state.last_price
+        except Exception:
+            pass
+        try:
+            last_rsi = bot_state.last_rsi
+        except Exception:
+            pass
+        try:
+            last_signal = bot_state.last_signal or "HOLD"
+        except Exception:
+            pass
+        try:
+            open_position = bot_state.open_position
+        except Exception:
+            pass
+        try:
+            config = bot_state.config
+        except Exception:
+            pass
+
+        # Get real account value safely
+        account_value = None
+        try:
+            is_paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
+            broker = Broker(paper=is_paper, dry_run=False)
+            account_value = broker.get_account_value()
+        except Exception:
+            account_value = 10000.0
+
+        return {
+            "running":       is_running,
+            "symbol":        config.symbol if config else None,
+            "last_price":    last_price,
+            "last_rsi":      last_rsi,
+            "last_signal":   last_signal,
+            "account_value": account_value,
+            "open_position": open_position,
+            "config":        config,
+            "stream_active": stream_active,
+        }
+    except Exception as e:
+        log.error(f"Status endpoint error: {e}", exc_info=True)
+        # Never return 500 — always return something useful
+        return {
+            "running":       False,
+            "symbol":        None,
+            "last_price":    None,
+            "last_rsi":      None,
+            "last_signal":   "HOLD",
+            "account_value": 10000.0,
+            "open_position": False,
+            "config":        None,
+            "stream_active": False,
+            "error":         str(e),
+        }
+
+
+class StartBotRequest(BotConfigRequest):
+    force_restart: bool = False
 
 
 @router.post("/start")
-async def start_bot(req: BotConfigRequest, session: Session = Depends(get_session)):
+async def start_bot(req: StartBotRequest, session: Session = Depends(get_session)):
     """Start the trading bot with the given configuration."""
-    if bot_state.is_running:
-        raise HTTPException(status_code=409, detail="Bot is already running")
+    # If force_restart is not set and bot is genuinely running, reject
+    if bot_state.is_running and not req.force_restart:
+        raise HTTPException(
+            status_code=409,
+            detail="Bot is already running. Use force_restart=true to restart."
+        )
+
+    # Force stop any existing instance (handles stale state after redeploy)
+    try:
+        bot_state.stop()
+        import time
+        time.sleep(1)   # give thread time to stop
+    except Exception:
+        pass
 
     cfg = BotConfig(
         symbol=req.symbol,
