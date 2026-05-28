@@ -5,6 +5,7 @@ bot.py
 from __future__ import annotations
 import asyncio
 import logging
+import math
 import os
 from datetime import datetime
 
@@ -22,6 +23,22 @@ from services.bot_runner import BotRunner
 
 log = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def safe_float(value, default=None):
+    """
+    Convert float to JSON-safe value.
+    Returns default if value is NaN, Infinity, or None.
+    """
+    if value is None:
+        return default
+    try:
+        f = float(value)
+        if math.isnan(f) or math.isinf(f):
+            return default
+        return round(f, 4)
+    except (TypeError, ValueError):
+        return default
 
 
 @router.get("/status")
@@ -42,11 +59,11 @@ async def get_status():
         except Exception:
             pass
         try:
-            last_price = bot_state.last_price
+            last_price = safe_float(bot_state.last_price)
         except Exception:
             pass
         try:
-            last_rsi = bot_state.last_rsi
+            last_rsi = safe_float(bot_state.last_rsi)
         except Exception:
             pass
         try:
@@ -63,13 +80,13 @@ async def get_status():
             pass
 
         # Get real account value safely
-        account_value = None
+        account_value = 10000.0
         try:
             is_paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
             broker = Broker(paper=is_paper, dry_run=False)
-            account_value = broker.get_account_value()
+            account_value = safe_float(broker.get_account_value(), 10000.0)
         except Exception:
-            account_value = 10000.0
+            pass
 
         return {
             "running":       is_running,
@@ -143,14 +160,22 @@ async def start_bot(req: StartBotRequest, session: Session = Depends(get_session
         nonlocal tick_count
         tick_count += 1
 
-        # Always broadcast to WebSocket
+        # Sanitize floats — NaN/Inf crash JSON serialization
+        safe_price   = safe_float(price)
+        safe_rsi     = safe_float(rsi)
+        safe_account = safe_float(account, 10000.0)
+
+        # Only broadcast if we have valid price data
+        if safe_price is None:
+            return
+
         data = {
-            "price": price,
-            "rsi": rsi,
-            "signal": signal,
-            "account": account,
-            "symbol": cfg.symbol,
-            "ts": datetime.utcnow().isoformat(),
+            "price":   safe_price,
+            "rsi":     safe_rsi,
+            "signal":  signal or "HOLD",
+            "account": safe_account,
+            "symbol":  cfg.symbol,
+            "ts":      datetime.utcnow().isoformat(),
         }
         try:
             asyncio.run_coroutine_threadsafe(manager.broadcast(data), loop)

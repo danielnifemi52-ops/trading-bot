@@ -4,6 +4,7 @@ Pure RSI calculation and signal generation.
 No I/O, no side effects. Fully testable in isolation.
 """
 from __future__ import annotations
+import math
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass, field
@@ -62,16 +63,25 @@ def calc_rsi(prices: pd.Series, period: int = 14) -> pd.Series:
             rs = avg_gain / avg_loss
             rsi_val = 100.0 - (100.0 / (1.0 + rs))
         rsi_vals.append(round(rsi_val, 4))
-    return pd.Series(rsi_vals, index=prices.index)
+    result = pd.Series(rsi_vals, index=prices.index)
+    # Replace any residual inf/-inf with NaN so callers never see Infinity
+    result = result.replace([float("inf"), float("-inf")], np.nan)
+    return result
 
 
-def get_signal(rsi_value: float, cfg: BotConfig) -> Signal:
+def get_signal(rsi_value, cfg: BotConfig) -> Signal:
     """Map a single RSI float to BUY / SELL / HOLD."""
-    if np.isnan(rsi_value):
+    if rsi_value is None:
         return "HOLD"
-    if rsi_value <= cfg.oversold:
+    try:
+        rsi_float = float(rsi_value)
+    except (TypeError, ValueError):
+        return "HOLD"
+    if math.isnan(rsi_float) or math.isinf(rsi_float):
+        return "HOLD"
+    if rsi_float <= cfg.oversold:
         return "BUY"
-    if rsi_value >= cfg.overbought:
+    if rsi_float >= cfg.overbought:
         return "SELL"
     return "HOLD"
 
