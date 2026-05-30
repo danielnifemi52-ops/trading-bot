@@ -7,7 +7,7 @@ import os
 import math
 import logging
 from datetime import datetime
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, HTTPException
 from sqlmodel import Session
 
 from db import engine
@@ -412,4 +412,61 @@ async def handle_text_command(message: dict):
         alerter._run(alerter._async.send(
             "❓ Unknown command. Send /help for the command list."
         ))
+
+
+@router.post("/register")
+async def register_webhook():
+    """Manually register Telegram webhook."""
+    import httpx
+    
+    token       = os.environ["TELEGRAM_TOKEN"]
+    render_url  = os.environ.get("RENDER_URL", "")
+    
+    if not render_url:
+        raise HTTPException(
+            status_code=400,
+            detail="RENDER_URL not set in environment variables"
+        )
+    
+    webhook_url = f"{render_url}/api/telegram/webhook"
+    
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            f"https://api.telegram.org/bot{token}/setWebhook",
+            json={
+                "url": webhook_url,
+                "allowed_updates": ["message", "callback_query"]
+            }
+        )
+        data = r.json()
+        
+        if data.get("ok"):
+            log.info(f"✅ Telegram webhook manually registered: {webhook_url}")
+            return {
+                "ok": True,
+                "webhook_url": webhook_url,
+                "message": "Webhook registered successfully"
+            }
+        else:
+            log.error(f"❌ Telegram rejected webhook: {data}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Telegram rejected webhook: {data}"
+            )
+
+
+@router.get("/info")
+async def webhook_info():
+    """Check current webhook status."""
+    import httpx
+    
+    token = os.environ["TELEGRAM_TOKEN"]
+    
+    async with httpx.AsyncClient() as client:
+        r = await client.get(
+            f"https://api.telegram.org/bot{token}/getWebhookInfo"
+        )
+        data = r.json()
+        log.info(f"Webhook info: {data}")
+        return data
 
