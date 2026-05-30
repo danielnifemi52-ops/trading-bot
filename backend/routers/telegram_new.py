@@ -412,4 +412,3 @@ async def handle_text_command(message: dict):
         alerter._run(alerter._async.send(
             "❓ Unknown command. Send /help for the command list."
         ))
-

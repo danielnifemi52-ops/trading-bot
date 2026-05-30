@@ -40,22 +40,32 @@ async def lifespan(app: FastAPI):
 
     # Register Telegram webhook on startup
     render_url = os.getenv("RENDER_URL", "")
-    if render_url and os.getenv("TELEGRAM_TOKEN"):
+    telegram_token = os.getenv("TELEGRAM_TOKEN", "")
+    
+    if render_url and telegram_token:
         import httpx
         webhook_url = f"{render_url}/api/telegram/webhook"
         try:
             async with httpx.AsyncClient() as client:
-                token = os.getenv("TELEGRAM_TOKEN")
                 r = await client.post(
-                    f"https://api.telegram.org/bot{token}/setWebhook",
-                    json={"url": webhook_url}
+                    f"https://api.telegram.org/bot{telegram_token}/setWebhook",
+                    json={
+                        "url": webhook_url,
+                        "allowed_updates": ["message", "callback_query"]
+                    }
                 )
-                if r.status_code == 200:
-                    log.info(f"Telegram webhook set: {webhook_url}")
+                data = r.json()
+                if data.get("ok"):
+                    log.info(f"✅ Telegram webhook registered: {webhook_url}")
                 else:
-                    log.warning(f"Telegram webhook failed: {r.text}")
+                    log.error(f"❌ Telegram webhook failed: {data}")
         except Exception as e:
-            log.warning(f"Could not set Telegram webhook: {e}")
+            log.error(f"Could not register Telegram webhook: {e}")
+    else:
+        log.warning(
+            "⚠️  RENDER_URL or TELEGRAM_TOKEN not set — "
+            "Telegram buttons will not work"
+        )
 
     yield
     scheduler.shutdown(wait=False)
