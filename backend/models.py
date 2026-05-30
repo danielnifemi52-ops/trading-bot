@@ -53,9 +53,9 @@ class BotConfigRequest(SQLModel):
     stop_loss_pct: float = 5.0
     take_profit_pct: float = 10.0
     risk_per_trade_pct: float = 2.0
-    poll_interval_seconds: int = 300  # 5 min default — conservative for Render free tier
+    poll_interval_seconds: int = 30  # 30 sec — fast updates for responsive UX
     dry_run: bool = True
-    timeframe: str = "1h"    # ← ADD THIS
+    timeframe: str = "15m"   # 15 min bars for faster RSI updates (4x more often than hourly)
 
 
 class BacktestRequest(SQLModel):

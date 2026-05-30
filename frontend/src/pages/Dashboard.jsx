@@ -261,13 +261,20 @@ export default function Dashboard() {
       }}>
         <StatCard
           label="Current Price"
-          value={price !== null ? formatPrice(price) : '--'}
+          value={
+            price 
+              ? `$${price.toLocaleString("en-US", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                })}`
+              : status?.running 
+                ? "Loading..."    
+                : "--"
+          }
           sub={
-            status?.symbol
-              ? marketStatus.isOpen
-                ? `Symbol: ${status.symbol}`
-                : `${status.symbol} · Last close price`
-              : 'Bot Idle'
+            !price && status?.running
+              ? "Fetching first price..."
+              : `Symbol: ${status?.symbol ?? "--"}`
           }
           highlight={price !== null ? 'var(--blue)' : undefined}
         />

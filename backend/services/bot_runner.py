@@ -82,8 +82,8 @@ def get_alpaca_timeframe(tf: str):
 
 def fetch_crypto_prices(
     symbol: str,
-    bars: int = 200,
-    timeframe: str = "1h",
+    bars: int = 50,
+    timeframe: str = "15m",
 ) -> pd.Series:
     """
     Fetch crypto OHLCV bars from Alpaca.
@@ -126,7 +126,7 @@ def fetch_crypto_prices(
         raise ValueError(f"Could not fetch crypto data for {symbol}: {e}")
 
 
-def fetch_prices(symbol: str, bars: int = 200, timeframe: str = "1h") -> pd.Series:
+def fetch_prices(symbol: str, bars: int = 50, timeframe: str = "15m") -> pd.Series:
     """Auto-detect crypto vs stock and download recent close prices."""
     if is_crypto(symbol):
         return fetch_crypto_prices(symbol, bars, timeframe)
@@ -246,8 +246,21 @@ class BotRunner:
 
     def _loop(self) -> None:
         """Main loop; runs until stop() is called."""
+        # Run first tick immediately on start
+        try:
+            self._tick()
+        except Exception as e:
+            log.error(f"First tick error: {e}", exc_info=True)
+
+        # Then poll on interval
         while not self._stop_evt.is_set():
             self._check_memory()
+            for _ in range(self.cfg.poll_interval_seconds):
+                if self._stop_evt.is_set():
+                    break
+                time.sleep(1)
+            if self._stop_evt.is_set():
+                break
             try:
                 self._tick()
             except Exception as e:
@@ -258,10 +271,6 @@ class BotRunner:
                     pass
             # Force garbage collection after every tick
             gc.collect()
-            for _ in range(self.cfg.poll_interval_seconds):
-                if self._stop_evt.is_set():
-                    break
-                time.sleep(1)
         log.info("Bot loop exited cleanly")
 
     def _tick(self) -> None:
