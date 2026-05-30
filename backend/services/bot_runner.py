@@ -288,7 +288,7 @@ class BotRunner:
         try:
             prices = fetch_prices(
                 self.cfg.symbol,
-                bars=100,
+                bars=50,
                 timeframe=getattr(self.cfg, "timeframe", "1h")
             )
         except UnsupportedSymbolError as e:
@@ -309,8 +309,15 @@ class BotRunner:
 
         try:
             rsi_ser = calc_rsi(prices, self.cfg.rsi_period)
-            rsi     = float(rsi_ser.iloc[-1])
-            price   = float(prices.iloc[-1])
+            
+            # Get last valid (non-NaN) RSI value
+            valid_rsi = rsi_ser.dropna()
+            if len(valid_rsi) == 0:
+                log.warning(f"RSI has no valid values for {self.cfg.symbol}")
+                return
+            
+            rsi   = float(valid_rsi.iloc[-1])
+            price = float(prices.iloc[-1])
             signal  = get_signal(rsi, self.cfg)
             acct    = self.broker.get_account_value()
 
@@ -318,8 +325,11 @@ class BotRunner:
             self.last_price  = price
 
             log.info(
-                f"{self.cfg.symbol} ${price:.2f} "
-                f"RSI={rsi:.1f} {signal}"
+                f"{self.cfg.symbol} "
+                f"price=${price:.2f} "
+                f"RSI={rsi:.2f} "
+                f"bars={len(prices)} "
+                f"valid_rsi_bars={len(valid_rsi)}"
             )
 
             if self.on_tick:

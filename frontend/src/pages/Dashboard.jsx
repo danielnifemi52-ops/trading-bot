@@ -273,11 +273,13 @@ export default function Dashboard() {
         />
         <StatCard
           label="RSI Value (14h)"
-          value={rsi !== null ? formatRsi(rsi) : '--'}
-          sub={
-            marketStatus.isOpen
-              ? `RSI ${status?.config?.rsi_period ?? 14} · Live`
-              : `RSI ${status?.config?.rsi_period ?? 14} · Market closed`
+          value={rsi !== null && rsi !== undefined 
+            ? rsi.toFixed(1) 
+            : "..."
+          }
+          sub={rsi !== null 
+            ? `RSI ${status?.config?.rsi_period ?? 14} · Live`
+            : "Warming up..."
           }
           highlight={rsi !== null ? (rsi <= status?.config?.oversold ? 'var(--green)' : rsi >= status?.config?.overbought ? 'var(--red)' : 'var(--text)') : undefined}
         />
@@ -327,7 +329,7 @@ export default function Dashboard() {
             RSI Technical Gauge
           </h3>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <RSIGauge value={rsi} />
+            <RSIGauge value={rsi} rsi_period={status?.config?.rsi_period ?? 14} />
           </div>
         </div>
 
