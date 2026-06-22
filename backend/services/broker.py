@@ -30,6 +30,15 @@ except ImportError:
     CRYPTO_DATA_AVAILABLE = False
 
 
+SUPPORTED_CRYPTO = {
+    "BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD",
+    "DOGE/USD", "SHIB/USD", "LTC/USD", "BCH/USD",
+    "LINK/USD", "UNI/USD", "AAVE/USD", "CRV/USD",
+    "XTZ/USD", "BAT/USD", "MKR/USD", "SUSHI/USD",
+    "YFI/USD", "GRT/USD", "SNX/USD", "ALGO/USD",
+}
+
+
 def is_crypto(symbol: str) -> bool:
     """Return True for Alpaca crypto pair symbols such as BTC/USD."""
     return "/" in (symbol or "")
@@ -60,6 +69,19 @@ class Broker:
                 api_key=os.environ["ALPACA_KEY"],
                 secret_key=os.environ["ALPACA_SECRET"],
             )
+
+    def is_supported_symbol(self, symbol: str) -> bool:
+        """Check if symbol is supported by Alpaca."""
+        if is_crypto(symbol):
+            return symbol in SUPPORTED_CRYPTO
+        if not self.client:
+            return False
+        # For stocks, try to get asset info
+        try:
+            asset = self.client.get_asset(symbol)
+            return asset.tradable
+        except Exception:
+            return False
 
     def get_account_value(self) -> float:
         """Return current portfolio value. Returns 10_000 in dry-run."""
@@ -93,6 +115,14 @@ class Broker:
             return True
         if not self.client:
             log.warning("Alpaca not configured - order skipped")
+            return False
+
+        # Validate symbol before placing order
+        if not self.is_supported_symbol(symbol):
+            log.error(
+                f"{symbol} is not supported by Alpaca. "
+                f"Order rejected."
+            )
             return False
         try:
             side_enum = OrderSide.BUY if side == "BUY" else OrderSide.SELL

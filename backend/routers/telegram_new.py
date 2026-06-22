@@ -128,6 +128,19 @@ async def execute_buy(
 ):
     """Place a BUY order and update the Telegram message."""
     try:
+        # Check symbol is supported before trying to order
+        if not broker.is_supported_symbol(symbol):
+            alerter.edit_message(
+                message_id,
+                f"❌ *Symbol not supported*\n"
+                f"`{symbol}` is not available on Alpaca.\n\n"
+                f"Supported crypto:\n"
+                f"BTC/USD, ETH/USD, SOL/USD, AVAX/USD,\n"
+                f"DOGE/USD, LTC/USD, LINK/USD and more.\n\n"
+                f"Change symbol in dashboard and restart bot."
+            )
+            return
+
         # Check if already have position
         if broker.has_position(symbol):
             alerter.edit_message(
