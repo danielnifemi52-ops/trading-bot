@@ -293,9 +293,10 @@ class BotRunner:
                 )
         self._last_market_state = currently_open
 
-        active_broker = os.getenv("ACTIVE_BROKER", "alpaca").lower()
-
-        if active_broker in ("binance", "coinbase"):
+        # Use broker's own price feed for Binance,
+        # Alpaca/yfinance fetch for stocks
+        from services.broker_binance import BinanceBroker
+        if isinstance(self.broker, BinanceBroker):
             prices = self.broker.get_recent_closes(
                 symbol=self.cfg.symbol,
                 limit=50,
@@ -303,7 +304,7 @@ class BotRunner:
             )
             if prices.empty:
                 log.warning(
-                    f"No price data from broker for "
+                    f"No price data from Binance for "
                     f"{self.cfg.symbol}"
                 )
                 return

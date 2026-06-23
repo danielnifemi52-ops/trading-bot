@@ -9,7 +9,7 @@ from db import init_db
 import pytest
 import pandas as pd
 from datetime import datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 init_db()
 
@@ -24,6 +24,19 @@ def mock_market_data_downloads():
     mock_df = pd.DataFrame({"Close": prices}, index=dates)
     with patch("services.backtester.download_data", return_value=mock_df) as mock_dl:
         yield {"download_data": mock_dl}
+
+
+@pytest.fixture(autouse=True)
+def mock_broker_calls():
+    """Mock get_broker inside routers.bot to avoid hitting live APIs during tests."""
+    with patch("routers.bot.get_broker") as mock_gb:
+        mock_broker = MagicMock()
+        mock_broker.get_account_value.return_value = 10000.0
+        mock_broker.has_position.return_value = False
+        mock_broker.place_market_order.return_value = True
+        mock_broker.close_position.return_value = True
+        mock_gb.return_value = mock_broker
+        yield mock_gb
 
 
 

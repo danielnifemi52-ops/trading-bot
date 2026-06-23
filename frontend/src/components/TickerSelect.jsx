@@ -6,32 +6,18 @@ import {
 } from "../utils/supportedAssets"
 
 // ---------------------------------------------------------------------------
-// Broker-aware crypto symbol lists
+// Crypto symbols — always routed through Binance automatically
 // ---------------------------------------------------------------------------
-const BROKER = import.meta.env.VITE_ACTIVE_BROKER || "alpaca"
+const CRYPTO_SYMBOLS = [
+  "BTC/USD", "ETH/USD", "BNB/USD", "SOL/USD",
+  "ADA/USD", "XRP/USD", "DOGE/USD", "AVAX/USD",
+  "MATIC/USD", "DOT/USD", "LTC/USD", "LINK/USD",
+  "UNI/USD", "ATOM/USD", "TRX/USD", "BCH/USD",
+  "AAVE/USD", "ALGO/USD", "XLM/USD", "APT/USD",
+]
 
-const SYMBOLS_BY_BROKER = {
-  alpaca: [
-    "BTC/USD", "ETH/USD", "SOL/USD", "DOGE/USD",
-    "LTC/USD", "BCH/USD", "LINK/USD", "AAVE/USD",
-  ],
-  binance: [
-    "BNB/USD", "BTC/USD", "ETH/USD", "SOL/USD",
-    "ADA/USD", "XRP/USD", "DOGE/USD", "AVAX/USD",
-    "MATIC/USD", "DOT/USD", "LTC/USD", "LINK/USD",
-    "UNI/USD", "ATOM/USD", "TRX/USD",
-  ],
-  coinbase: [
-    "BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD",
-    "DOGE/USD", "LTC/USD", "LINK/USD", "AAVE/USD",
-    "UNI/USD", "MATIC/USD", "ADA/USD", "XRP/USD",
-  ],
-}
-
-const ACTIVE_CRYPTO = SYMBOLS_BY_BROKER[BROKER] || SYMBOLS_BY_BROKER.alpaca
-
-// All symbols this broker supports (for the "not supported" warning)
-const ALL_SUPPORTED = [...ACTIVE_CRYPTO, ...STOCK_SYMBOLS, ...ETF_SYMBOLS]
+// All symbols supported (for "not supported" warning)
+const ALL_SUPPORTED = [...CRYPTO_SYMBOLS, ...STOCK_SYMBOLS, ...ETF_SYMBOLS]
 const isSupported = (symbol) => ALL_SUPPORTED.includes(symbol)
 
 // ---------------------------------------------------------------------------
@@ -39,12 +25,11 @@ const isSupported = (symbol) => ALL_SUPPORTED.includes(symbol)
 // ---------------------------------------------------------------------------
 const TICKER_GROUPS = [
   {
-    group: "Crypto",
-    symbols: ACTIVE_CRYPTO,
+    group: "Crypto — Binance 24/7",
+    symbols: CRYPTO_SYMBOLS,
     icon: "₿",
     color: "#f59e0b",
-    desc: "Available 24/7 · No PDT rule",
-    showBrokerBadge: true,
+    desc: "Auto-routed to Binance · No PDT rule",
   },
   {
     group: "Stocks — NYSE hours",
@@ -114,7 +99,7 @@ export default function TickerSelect({ value, onChange }) {
           fontSize: 11, color: "#ef4444",
           margin: "4px 0 0"
         }}>
-          ✕ {value} is not supported by {BROKER.toUpperCase()}.
+          ✕ {value} is not supported.
           Select from the list below.
         </p>
       )}
@@ -151,20 +136,6 @@ export default function TickerSelect({ value, onChange }) {
                 gap: 4,
               }}>
                 {group.icon} {group.group.toUpperCase()}
-                {group.showBrokerBadge && (
-                  <span style={{
-                    fontSize: 9,
-                    padding: "1px 6px",
-                    borderRadius: 3,
-                    background: "#1e3a5f",
-                    color: "#93c5fd",
-                    marginLeft: 4,
-                    letterSpacing: "0.05em",
-                    fontWeight: 600,
-                  }}>
-                    via {BROKER.toUpperCase()}
-                  </span>
-                )}
                 <span style={{
                   color: "#475569",
                   fontWeight: 400,

@@ -83,7 +83,8 @@ async def get_status():
         # Get real account value safely
         account_value = 10000.0
         try:
-            broker = get_broker(dry_run=False)
+            symbol = config.symbol if config else ""
+            broker = get_broker(symbol=symbol, dry_run=False)
             account_value = safe_float(broker.get_account_value(), 10000.0)
         except Exception:
             pass
@@ -149,7 +150,7 @@ async def start_bot(req: StartBotRequest, session: Session = Depends(get_session
         poll_interval_seconds=req.poll_interval_seconds,
         timeframe=req.timeframe,
     )
-    broker = get_broker(dry_run=req.dry_run)
+    broker = get_broker(symbol=req.symbol, dry_run=req.dry_run)
     alerter = SyncAlerter()
 
     loop = asyncio.get_event_loop()
@@ -264,7 +265,7 @@ async def manual_trade(req: ManualTradeRequest):
     """
     cfg      = bot_state.config
     dry_run  = False
-    broker   = get_broker(dry_run=dry_run)
+    broker   = get_broker(symbol=req.symbol, dry_run=dry_run)
     alerter  = SyncAlerter()
 
     try:
@@ -491,10 +492,33 @@ def _get_recommendation(results: dict) -> str:
 
 @router.get("/account")
 async def get_account():
-    """Get real account data from Alpaca paper trading."""
+    """Get real account data from the active broker (auto-detected by symbol)."""
     try:
-        broker = get_broker(dry_run=False)
-        
+        from services.broker_binance import BinanceBroker
+        symbol = (
+            bot_state.config.symbol
+            if bot_state.config else ""
+        )
+        broker = get_broker(symbol=symbol, dry_run=False)
+
+        # ── Binance path ────────────────────────────────────────────────────
+        if isinstance(broker, BinanceBroker):
+            return {
+                "connected":       broker.client is not None,
+                "account_id":      "binance",
+                "status":          "ACTIVE",
+                "currency":        "USDT",
+                "portfolio_value": broker.get_account_value(),
+                "cash":            broker.get_buying_power(),
+                "buying_power":    broker.get_buying_power(),
+                "equity":          broker.get_account_value(),
+                "last_equity":     broker.get_account_value(),
+                "pnl":             0.0,
+                "pnl_pct":         0.0,
+                "paper":           os.getenv("BINANCE_TESTNET", "true").lower() == "true",
+            }
+
+        # ── Alpaca path ─────────────────────────────────────────────────────
         if not broker.client:
             return {
                 "connected": False,
@@ -502,7 +526,8 @@ async def get_account():
             }
 
         acct = broker.client.get_account()
-        
+        is_paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
+
         return {
             "connected":        True,
             "account_id":       str(acct.id),
@@ -514,8 +539,8 @@ async def get_account():
             "equity":           float(acct.equity),
             "last_equity":      float(acct.last_equity),
             "pnl":              float(acct.equity) - float(acct.last_equity),
-            "pnl_pct":          ((float(acct.equity) - float(acct.last_equity)) 
-                                 / float(acct.last_equity) * 100) 
+            "pnl_pct":          ((float(acct.equity) - float(acct.last_equity))
+                                 / float(acct.last_equity) * 100)
                                  if float(acct.last_equity) > 0 else 0,
             "paper":            is_paper,
         }
@@ -526,15 +551,52 @@ async def get_account():
 
 @router.get("/positions")
 async def get_positions():
-    """Get all open positions from Alpaca."""
+    """Get all open positions from the active broker (auto-detected by symbol)."""
     try:
-        broker = get_broker(dry_run=False)
-        
+        from services.broker_binance import BinanceBroker
+        symbol = (
+            bot_state.config.symbol
+            if bot_state.config else ""
+        )
+        broker = get_broker(symbol=symbol, dry_run=False)
+
+        # ── Binance: return current crypto balances as positions ─────────────
+        if isinstance(broker, BinanceBroker):
+            if not broker.client:
+                return {"positions": []}
+            try:
+                balances = broker.client.get_account()["balances"]
+                positions = []
+                for b in balances:
+                    free = float(b["free"])
+                    locked = float(b["locked"])
+                    total = free + locked
+                    if total > 0.0001 and b["asset"] not in ("USDT", "BNB"):
+                        sym = f"{b['asset']}/USD"
+                        price = broker.get_latest_price(sym) if total > 0 else 0.0
+                        positions.append({
+                            "symbol":        sym,
+                            "qty":           total,
+                            "side":          "long",
+                            "entry_price":   0.0,
+                            "current_price": price,
+                            "market_value":  total * price,
+                            "cost_basis":    0.0,
+                            "unrealized_pnl": 0.0,
+                            "unrealized_pct": 0.0,
+                            "change_today":  0.0,
+                        })
+                return {"positions": positions}
+            except Exception as e:
+                log.error(f"Binance positions fetch error: {e}")
+                return {"positions": []}
+
+        # ── Alpaca path ──────────────────────────────────────────────────────
         if not broker.client:
             return {"positions": []}
 
         positions = broker.client.get_all_positions()
-        
+
         return {
             "positions": [
                 {
@@ -559,12 +621,49 @@ async def get_positions():
 
 @router.get("/orders")
 async def get_orders(limit: int = 20):
-    """Get recent orders from Alpaca."""
+    """Get recent orders from the active broker (auto-detected by symbol)."""
     try:
+        from services.broker_binance import BinanceBroker
+        symbol = (
+            bot_state.config.symbol
+            if bot_state.config else ""
+        )
+        broker = get_broker(symbol=symbol, dry_run=False)
+
+        # ── Binance: fetch recent trades ─────────────────────────────────────
+        if isinstance(broker, BinanceBroker):
+            if not broker.client:
+                return {"orders": []}
+            try:
+                from services.broker_binance import to_binance_symbol
+                bsym = to_binance_symbol(symbol) if symbol else None
+                if not bsym:
+                    return {"orders": []}
+                trades = broker.client.get_my_trades(symbol=bsym, limit=limit)
+                return {
+                    "orders": [
+                        {
+                            "id":           str(t["orderId"]),
+                            "symbol":       symbol,
+                            "side":         "BUY" if t["isBuyer"] else "SELL",
+                            "qty":           float(t["qty"]),
+                            "filled_qty":    float(t["qty"]),
+                            "filled_price":  float(t["price"]),
+                            "status":        "filled",
+                            "type":          "market",
+                            "created_at":    str(t["time"]),
+                            "filled_at":     str(t["time"]),
+                        }
+                        for t in trades
+                    ]
+                }
+            except Exception as e:
+                log.error(f"Binance orders fetch error: {e}")
+                return {"orders": []}
+
+        # ── Alpaca path ──────────────────────────────────────────────────────
         from alpaca.trading.requests import GetOrdersRequest
         from alpaca.trading.enums import QueryOrderStatus
-
-        broker = get_broker(dry_run=False)
 
         if not broker.client:
             return {"orders": []}
@@ -601,7 +700,7 @@ async def get_orders(limit: int = 20):
 async def close_position_endpoint(symbol: str):
     """Close a specific position from the dashboard."""
     try:
-        broker = get_broker(dry_run=False)
+        broker = get_broker(symbol=symbol, dry_run=False)
         ok = broker.close_position(symbol)
         if ok:
             return {"ok": True, "message": f"Position closed: {symbol}"}

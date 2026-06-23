@@ -33,9 +33,9 @@ def safe_float(value, default=None):
         return default
 
 
-def get_broker():
-    """Get broker instance using ACTIVE_BROKER env setting."""
-    return _get_broker(dry_run=False)
+def get_broker(symbol: str = ""):
+    """Get broker instance — auto-routes by symbol (crypto→Binance, stocks→Alpaca)."""
+    return _get_broker(symbol=symbol, dry_run=False)
 
 
 def get_alerter() -> SyncAlerter:
@@ -107,7 +107,7 @@ async def handle_button_tap(callback: dict):
         f"⏳ Placing {action} order on Alpaca..."
     )
 
-    broker = get_broker()
+    broker = get_broker(symbol=symbol)
 
     if action == "BUY":
         await execute_buy(
@@ -286,7 +286,9 @@ async def handle_text_command(message: dict):
     """Handle typed commands in Telegram chat."""
     text    = message.get("text", "").strip().lower()
     alerter = get_alerter()
-    broker  = get_broker()
+    broker  = get_broker(
+        symbol=bot_state.config.symbol if bot_state.config else ""
+    )
 
     if text == "/status":
         running = bot_state.is_running
