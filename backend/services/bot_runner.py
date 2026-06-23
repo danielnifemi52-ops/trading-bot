@@ -36,9 +36,8 @@ log = logging.getLogger(__name__)
 # ── Supported symbol sets ────────────────────────────────────────────────────
 # Keep in sync with frontend/src/components/TickerSelect.jsx
 ALPACA_CRYPTO = {
-    "BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD", "DOGE/USD",
-    "SHIB/USD", "LTC/USD", "BCH/USD", "LINK/USD", "UNI/USD",
-    "AAVE/USD", "CRV/USD",
+    "BTC/USD", "ETH/USD", "SOL/USD", "DOGE/USD",
+    "LTC/USD", "BCH/USD", "LINK/USD", "AAVE/USD",
 }
 ALPACA_STOCKS = {
     "AAPL", "MSFT", "GOOGL", "AMZN", "META",

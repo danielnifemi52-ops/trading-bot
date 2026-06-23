@@ -8,23 +8,11 @@ export const CRYPTO_SYMBOLS = [
   "BTC/USD",
   "ETH/USD",
   "SOL/USD",
-  "AVAX/USD",
   "DOGE/USD",
-  "SHIB/USD",
   "LTC/USD",
   "BCH/USD",
   "LINK/USD",
-  "UNI/USD",
   "AAVE/USD",
-  "CRV/USD",
-  "XTZ/USD",
-  "BAT/USD",
-  "MKR/USD",
-  "SUSHI/USD",
-  "YFI/USD",
-  "GRT/USD",
-  "SNX/USD",
-  "ALGO/USD",
 ]
 
 export const STOCK_SYMBOLS = [
