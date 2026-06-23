@@ -18,6 +18,7 @@ from state import bot_state
 from ws import manager
 from core.strategy import BotConfig
 from services.broker import Broker
+from services.broker_factory import get_broker
 from services.alerts import SyncAlerter
 from services.bot_runner import BotRunner
 
@@ -82,8 +83,7 @@ async def get_status():
         # Get real account value safely
         account_value = 10000.0
         try:
-            is_paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
-            broker = Broker(paper=is_paper, dry_run=False)
+            broker = get_broker(dry_run=False)
             account_value = safe_float(broker.get_account_value(), 10000.0)
         except Exception:
             pass
@@ -149,7 +149,7 @@ async def start_bot(req: StartBotRequest, session: Session = Depends(get_session
         poll_interval_seconds=req.poll_interval_seconds,
         timeframe=req.timeframe,
     )
-    broker = Broker(paper=True, dry_run=req.dry_run)
+    broker = get_broker(dry_run=req.dry_run)
     alerter = SyncAlerter()
 
     loop = asyncio.get_event_loop()
@@ -263,9 +263,8 @@ async def manual_trade(req: ManualTradeRequest):
     Used when user clicks Buy Now or Sell Now button.
     """
     cfg      = bot_state.config
-    is_paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
     dry_run  = False
-    broker   = Broker(paper=is_paper, dry_run=dry_run)
+    broker   = get_broker(dry_run=dry_run)
     alerter  = SyncAlerter()
 
     try:
@@ -494,8 +493,7 @@ def _get_recommendation(results: dict) -> str:
 async def get_account():
     """Get real account data from Alpaca paper trading."""
     try:
-        is_paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
-        broker = Broker(paper=is_paper, dry_run=False)
+        broker = get_broker(dry_run=False)
         
         if not broker.client:
             return {
@@ -530,8 +528,7 @@ async def get_account():
 async def get_positions():
     """Get all open positions from Alpaca."""
     try:
-        is_paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
-        broker = Broker(paper=is_paper, dry_run=False)
+        broker = get_broker(dry_run=False)
         
         if not broker.client:
             return {"positions": []}
@@ -567,8 +564,7 @@ async def get_orders(limit: int = 20):
         from alpaca.trading.requests import GetOrdersRequest
         from alpaca.trading.enums import QueryOrderStatus
 
-        is_paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
-        broker = Broker(paper=is_paper, dry_run=False)
+        broker = get_broker(dry_run=False)
 
         if not broker.client:
             return {"orders": []}
@@ -605,8 +601,7 @@ async def get_orders(limit: int = 20):
 async def close_position_endpoint(symbol: str):
     """Close a specific position from the dashboard."""
     try:
-        is_paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
-        broker = Broker(paper=is_paper, dry_run=False)
+        broker = get_broker(dry_run=False)
         ok = broker.close_position(symbol)
         if ok:
             return {"ok": True, "message": f"Position closed: {symbol}"}

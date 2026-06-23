@@ -15,6 +15,8 @@ yfinance==0.2.40
 
 # Broker
 alpaca-py==0.26.0
+python-binance==1.0.19
+coinbase-advanced-py==1.7.0
 
 # HTTP client (Telegram)
 httpx==0.27.0

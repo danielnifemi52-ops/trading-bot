@@ -12,7 +12,8 @@ from sqlmodel import Session
 
 from db import engine
 from models import Trade
-from services.broker import Broker, is_crypto
+from services.broker import is_crypto
+from services.broker_factory import get_broker as _get_broker
 from services.alerts import SyncAlerter
 from state import bot_state
 
@@ -32,10 +33,9 @@ def safe_float(value, default=None):
         return default
 
 
-def get_broker() -> Broker:
-    """Get broker instance using current env settings."""
-    is_paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
-    return Broker(paper=is_paper, dry_run=False)
+def get_broker():
+    """Get broker instance using ACTIVE_BROKER env setting."""
+    return _get_broker(dry_run=False)
 
 
 def get_alerter() -> SyncAlerter:

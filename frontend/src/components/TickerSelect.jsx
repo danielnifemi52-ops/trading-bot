@@ -1,37 +1,70 @@
 import { useState, useRef } from 'react';
 import { 
-  CRYPTO_SYMBOLS, 
   STOCK_SYMBOLS, 
   ETF_SYMBOLS,
-  isSupported,
   isCrypto,
 } from "../utils/supportedAssets"
 
+// ---------------------------------------------------------------------------
+// Broker-aware crypto symbol lists
+// ---------------------------------------------------------------------------
+const BROKER = import.meta.env.VITE_ACTIVE_BROKER || "alpaca"
+
+const SYMBOLS_BY_BROKER = {
+  alpaca: [
+    "BTC/USD", "ETH/USD", "SOL/USD", "DOGE/USD",
+    "LTC/USD", "BCH/USD", "LINK/USD", "AAVE/USD",
+  ],
+  binance: [
+    "BNB/USD", "BTC/USD", "ETH/USD", "SOL/USD",
+    "ADA/USD", "XRP/USD", "DOGE/USD", "AVAX/USD",
+    "MATIC/USD", "DOT/USD", "LTC/USD", "LINK/USD",
+    "UNI/USD", "ATOM/USD", "TRX/USD",
+  ],
+  coinbase: [
+    "BTC/USD", "ETH/USD", "SOL/USD", "AVAX/USD",
+    "DOGE/USD", "LTC/USD", "LINK/USD", "AAVE/USD",
+    "UNI/USD", "MATIC/USD", "ADA/USD", "XRP/USD",
+  ],
+}
+
+const ACTIVE_CRYPTO = SYMBOLS_BY_BROKER[BROKER] || SYMBOLS_BY_BROKER.alpaca
+
+// All symbols this broker supports (for the "not supported" warning)
+const ALL_SUPPORTED = [...ACTIVE_CRYPTO, ...STOCK_SYMBOLS, ...ETF_SYMBOLS]
+const isSupported = (symbol) => ALL_SUPPORTED.includes(symbol)
+
+// ---------------------------------------------------------------------------
+// Ticker groups
+// ---------------------------------------------------------------------------
 const TICKER_GROUPS = [
   {
-    group: "Crypto — Alpaca 24/7",
-    symbols: CRYPTO_SYMBOLS,
+    group: "Crypto",
+    symbols: ACTIVE_CRYPTO,
     icon: "₿",
     color: "#f59e0b",
-    desc: "Available 24/7 · No PDT rule"
+    desc: "Available 24/7 · No PDT rule",
+    showBrokerBadge: true,
   },
   {
     group: "Stocks — NYSE hours",
     symbols: STOCK_SYMBOLS,
     icon: "📈",
     color: "#3b82f6",
-    desc: "Mon–Fri 2:30pm–9pm Lagos"
+    desc: "Mon–Fri 2:30pm–9pm Lagos",
   },
   {
     group: "ETFs — NYSE hours",
     symbols: ETF_SYMBOLS,
     icon: "📊",
     color: "#10b981",
-    desc: "Mon–Fri 2:30pm–9pm Lagos"
+    desc: "Mon–Fri 2:30pm–9pm Lagos",
   },
 ]
 
-// Full component:
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 export default function TickerSelect({ value, onChange }) {
   const [search, setSearch]   = useState("")
   const [open, setOpen]       = useState(false)
@@ -81,7 +114,7 @@ export default function TickerSelect({ value, onChange }) {
           fontSize: 11, color: "#ef4444",
           margin: "4px 0 0"
         }}>
-          ✕ {value} is not supported by Alpaca.
+          ✕ {value} is not supported by {BROKER.toUpperCase()}.
           Select from the list below.
         </p>
       )}
@@ -112,12 +145,30 @@ export default function TickerSelect({ value, onChange }) {
                 background: "#0f1117",
                 position: "sticky",
                 top: 0,
+                display: "flex",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: 4,
               }}>
                 {group.icon} {group.group.toUpperCase()}
+                {group.showBrokerBadge && (
+                  <span style={{
+                    fontSize: 9,
+                    padding: "1px 6px",
+                    borderRadius: 3,
+                    background: "#1e3a5f",
+                    color: "#93c5fd",
+                    marginLeft: 4,
+                    letterSpacing: "0.05em",
+                    fontWeight: 600,
+                  }}>
+                    via {BROKER.toUpperCase()}
+                  </span>
+                )}
                 <span style={{
                   color: "#475569",
                   fontWeight: 400,
-                  marginLeft: 8,
+                  marginLeft: 4,
                   letterSpacing: 0,
                 }}>
                   {group.desc}

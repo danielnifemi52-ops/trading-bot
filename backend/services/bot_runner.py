@@ -293,27 +293,44 @@ class BotRunner:
                 )
         self._last_market_state = currently_open
 
-        try:
-            prices = fetch_prices(
-                self.cfg.symbol,
-                bars=50,
-                timeframe=getattr(self.cfg, "timeframe", "1h")
+        active_broker = os.getenv("ACTIVE_BROKER", "alpaca").lower()
+
+        if active_broker in ("binance", "coinbase"):
+            prices = self.broker.get_recent_closes(
+                symbol=self.cfg.symbol,
+                limit=50,
+                interval=getattr(self.cfg, "timeframe", "1h"),
             )
-        except UnsupportedSymbolError as e:
-            msg = str(e)
-            log.error(f"Unsupported symbol — stopping bot: {msg}")
-            try:
-                self.alerter.error_alert(
-                    f"⛔ Bot stopped: {msg}. "
-                    f"Please restart with a supported symbol."
+            if prices.empty:
+                log.warning(
+                    f"No price data from broker for "
+                    f"{self.cfg.symbol}"
                 )
-            except Exception:
-                pass
-            self.stop()  # clean shutdown — no more retries
-            return
-        except Exception as e:
-            log.error(f"Tick error: {e}", exc_info=True)
-            return
+                return
+        else:
+            # Alpaca path — existing logic untouched
+            try:
+                prices = fetch_prices(
+                    self.cfg.symbol,
+                    bars=50,
+                    timeframe=getattr(self.cfg, "timeframe", "1h")
+                )
+            except UnsupportedSymbolError as e:
+                msg = str(e)
+                log.error(f"Unsupported symbol — stopping bot: {msg}")
+                try:
+                    self.alerter.error_alert(
+                        f"⛔ Bot stopped: {msg}. "
+                        f"Please restart with a supported symbol."
+                    )
+                except Exception:
+                    pass
+                self.stop()  # clean shutdown — no more retries
+                return
+            except Exception as e:
+                log.error(f"Tick error: {e}", exc_info=True)
+                return
+
 
         try:
             rsi_ser = calc_rsi(prices, self.cfg.rsi_period)
